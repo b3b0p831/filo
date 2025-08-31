@@ -7,7 +7,7 @@ import (
 	"bebop831.com/filo/config"
 )
 
-func Sync(eventChan <-chan struct{}, exit <-chan struct{}, cfg *config.Config) {
+func Sync(eventChan <-chan struct{}, exit <-chan struct{}, syncChan chan struct{}, cfg *config.Config) {
 	minInterval, err := GetTimeInterval(cfg.SyncDelay)
 	if err != nil {
 		log.Fatalf("failed to parse sync_delay in config: invalid value '%v' (must use s, m, or h).", cfg.SyncDelay)
@@ -20,6 +20,7 @@ func Sync(eventChan <-chan struct{}, exit <-chan struct{}, cfg *config.Config) {
 			log.Println("Preparing to sync...")
 			time.Sleep(2 * time.Second)
 			log.Printf("Syncing started: %v -> %v...\n", cfg.SourceDir, cfg.TargetDir)
+			syncChan <- struct{}{}
 			time.Sleep(2 * time.Second)
 			log.Printf("Sync completed successfully\n")
 
@@ -34,6 +35,7 @@ func Sync(eventChan <-chan struct{}, exit <-chan struct{}, cfg *config.Config) {
 			timer.Reset(minInterval)
 
 		case <-exit:
+			timer.Stop()
 			return
 		}
 	}

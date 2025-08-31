@@ -2,7 +2,6 @@ package util
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
 	"sync"
@@ -94,7 +93,7 @@ func GetTimeInterval(interval string) (time.Duration, error) {
 	timeValStr, lastChar := interval[:len(interval)-1], interval[len(interval)-1]
 	timeVal, err := strconv.ParseInt(timeValStr, 10, 64)
 	if err != nil {
-		log.Fatal("unable to parse time from sync_delay. re-check config.")
+		return 0, fmt.Errorf("util/util.go: unable to ParseInt(timevalStr)")
 	}
 
 	switch lastChar {

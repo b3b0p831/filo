@@ -59,7 +59,8 @@ func main() {
 
 	eventChan := make(chan struct{})
 	exitChan := make(chan struct{})
-	go util.Sync(eventChan, exitChan, *&cfg)
+	syncChan := make(chan struct{})
+	go util.Sync(eventChan, exitChan, syncChan, cfg)
 	for {
 		select {
 		case event, ok := <-watcher.Events:
