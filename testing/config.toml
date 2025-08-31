@@ -2,4 +2,4 @@ source_dir = "/Users/bebop831/Dev/serv"
 target_dir = "/Volumes/usb"
 max_fill = 0.95
 log_level = "debug"
-sync_delay = "5s"
+sync_delay = "7s"

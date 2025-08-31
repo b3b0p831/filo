@@ -48,6 +48,7 @@ func main() {
 
 	watcher, err := fsnotify.NewWatcher()
 	watcher.Add(cfg.SourceDir)
+	go util.OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: cfg.SourceDir}, watcher)
 
 	if err != nil {
 		log.Fatalln(err)
@@ -60,7 +61,8 @@ func main() {
 	eventChan := make(chan struct{})
 	exitChan := make(chan struct{})
 	syncChan := make(chan struct{})
-	go util.Sync(eventChan, exitChan, syncChan, cfg)
+
+	go util.Sync(eventChan, exitChan, nil, cfg)
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -95,6 +97,7 @@ func main() {
 			}
 			log.Println("error:", err)
 
+		case <-syncChan:
 		}
 	}
 
