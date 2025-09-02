@@ -13,7 +13,7 @@ func Load() (*Config, error) {
 	// Set defaults.
 	v.SetDefault("max_fill", 0.92) // The actions of this program cannot result in a change where new target size > max_fill
 	v.SetDefault("log_level", "info")
-	v.SetDefault("sync_delay", "10s")
+	v.SetDefault("sync_delay", "30s")
 
 	// Config file name and type
 	v.SetConfigName("config") // without extension

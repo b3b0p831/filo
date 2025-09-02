@@ -3,43 +3,105 @@ package util
 import (
 	"fmt"
 	"io/fs"
+	"log"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
-// FileObject represents a directory entry and its children.
+// FileNode represents a directory entry and its children.
 // It provides a recursive view of a file system hierarchy.
-type FileObject struct {
-	path     string
-	d        fs.DirEntry
-	children []FileObject
+type FileNode struct {
+	Path     string
+	Entry    fs.DirEntry
+	Parent   *FileNode
+	Children []*FileNode
 }
 
-// String implements fmt.Stringer, producing a hierarchical
-// string representation of the FileObject tree.
-func (f FileObject) String() string {
-	return f.format(0)
+type FileTree struct {
+	Root  *FileNode
+	Index map[string]*FileNode
 }
 
-// format is a helper that recursively formats the FileObject
-// with indentation for readability.
-func (f FileObject) format(indent int) string {
-	var sb strings.Builder
-	prefix := strings.Repeat("  ", indent)
+func BuildTree(rootPath string) *FileTree {
+	ft := &FileTree{Index: make(map[string]*FileNode), Root: &FileNode{Path: rootPath}}
+	ft.Index[rootPath] = ft.Root
 
-	// Prefer fs.DirEntry.Name() when available, otherwise fallback to path
-	if f.d != nil {
-		if f.d.IsDir() {
-			sb.WriteString(fmt.Sprintf("%s%s/\n", prefix, f.d.Name()))
-		} else {
-			sb.WriteString(fmt.Sprintf("%s%s\n", prefix, f.d.Name()))
+	filepath.WalkDir(ft.Root.Path, func(path string, d fs.DirEntry, err error) error {
+		currentNode := ft.Index[path]
+		if currentNode == nil {
+			currentNode = &FileNode{}
+			ft.Index[path] = currentNode
 		}
+
+		currentNode.Path = path
+		currentNode.Entry = d
+
+		if currentNode.Entry.IsDir() {
+			entries, err := os.ReadDir(path)
+			if err != nil {
+				log.Println(err)
+				return filepath.SkipDir
+			}
+
+			currentNode.Children = make([]*FileNode, 0)
+			for _, e := range entries {
+				childNode := &FileNode{Path: filepath.Join(path, e.Name()), Entry: e, Parent: currentNode, Children: make([]*FileNode, 0)}
+				currentNode.Children = append(currentNode.Children, childNode)
+				ft.Index[childNode.Path] = childNode
+			}
+		}
+
+		return nil
+	})
+
+	return ft
+}
+
+func (n *FileNode) String() string {
+	var sb strings.Builder
+
+	sb.WriteString("FileNode\n")
+	//	sb.WriteString(fmt.Sprintf("  Path: %s\n", n.Path))
+
+	if n.Entry != nil {
+		sb.WriteString(fmt.Sprintf("  Entry: %s\n", n.Entry.Name()))
 	} else {
-		sb.WriteString(fmt.Sprintf("%s%s\n", prefix, f.path))
+		sb.WriteString("  Entry: <nil>\n")
 	}
 
-	for _, child := range f.children {
-		sb.WriteString(child.format(indent + 1))
+	if n.Parent != nil {
+		sb.WriteString(fmt.Sprintf("  Parent: %s\n", n.Parent.Path))
+	} else {
+		sb.WriteString("  Parent: <nil>\n")
+	}
+
+	if n.Children != nil {
+		tmpChildren := make([]string, len(n.Children))
+		for _, c := range n.Children {
+			if c.Entry != nil {
+				tmpChildren = append(tmpChildren, c.Entry.Name())
+			}
+		}
+		sb.WriteString(fmt.Sprintf("  Children: %v\n", tmpChildren))
 	}
 
 	return sb.String()
+}
+
+func (t *FileTree) String() string {
+	var b strings.Builder
+	printTree(t.Root, 0, &b)
+	return b.String()
+}
+
+func printTree(n *FileNode, level int, b *strings.Builder) {
+	if n == nil {
+		return
+	}
+
+	fmt.Fprintf(b, "%s-%s\n", strings.Repeat(" ", level), n.Entry.Name())
+	for _, c := range n.Children {
+		printTree(c, level+2, b)
+	}
 }
