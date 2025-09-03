@@ -44,7 +44,7 @@ func main() {
 	}
 
 	util.PrintConfig(cfg, srcUsage, targetUsage)
-	log.Println("Starting FILO...")
+	log.Printf("Starting FILO watch on '%s'...\n", cfg.SourceDir)
 
 	watcher, err := fsnotify.NewWatcher()
 	watcher.Add(cfg.SourceDir)
@@ -58,7 +58,7 @@ func main() {
 	renameColor := color.New(color.FgHiYellow, color.Bold).SprintFunc()
 	removeColor := color.New(color.FgRed, color.Bold).SprintFunc()
 
-	eventChan := make(chan struct{})
+	eventChan := make(chan fsnotify.Event)
 	exitChan := make(chan struct{})
 	syncChan := make(chan struct{})
 
@@ -88,7 +88,7 @@ func main() {
 				log.Println(event.Op, event.Name)
 			}
 
-			eventChan <- struct{}{}
+			eventChan <- event
 
 		case err, ok := <-watcher.Errors:
 			if !ok {

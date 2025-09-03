@@ -23,6 +23,11 @@ type FileTree struct {
 	Index map[string]*FileNode
 }
 
+type FileChange struct {
+	Op   string
+	Path string
+}
+
 func BuildTree(rootPath string) *FileTree {
 	ft := &FileTree{Index: make(map[string]*FileNode), Root: &FileNode{Path: rootPath}}
 	ft.Index[rootPath] = ft.Root
