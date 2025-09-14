@@ -9,34 +9,45 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-func Sync(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan chan struct{}, cfg *config.Config) {
+// Sync maintains 2 directories that should be the same. Does not do intial sync. That should happen before arriving here.
+func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan chan struct{}, cfg *config.Config) {
 	minInterval, err := GetTimeInterval(cfg.SyncDelay)
 	if err != nil {
 		log.Fatalf("failed to parse sync_delay in config: invalid value '%v' (must use s, m, or h).", cfg.SyncDelay)
 	}
 
 	var lastEvent time.Time
-	lastChange := make(map[string][]string)
+	fileEvents := make(map[string][]string)
 
 	for {
 		select {
 		case e := <-eventChan:
-			changesSlice := lastChange[e.Op.String()]
-			lastChange[e.Op.String()] = append(changesSlice, e.Name)
+			changesSlice := fileEvents[e.Op.String()] // i.e fileEvents["CREATE"]
+			fileEvents[e.Op.String()] = append(changesSlice, e.Name)
 			lastEvent = time.Now()
 
 		case <-time.After(minInterval):
 			if !lastEvent.IsZero() && time.Since(lastEvent) >= minInterval {
 
-				fileTree := BuildTree(cfg.SourceDir)
+				srcFileTree := BuildTree(cfg.SourceDir)
+				dstFileTree := BuildTree(cfg.TargetDir)
 
-				fmt.Println(fileTree)
+				fmt.Println(srcFileTree)
+				fmt.Println(dstFileTree)
+				fmt.Println(fileEvents) //These are the changes that occurred while watching src
 
-				for _, v := range fileTree.Index {
-					fmt.Println(v)
-				}
+				// for Op, Paths := range fileEvents {
+				// 	switch Op {
+				// 	case "RENAME","REMOVE":
+						// Delete the file where the event is Rename or Remove. Will treat same for now
 
-				fmt.Println(lastChange)
+				// 	case "WRITE":
+						// Compare fileState info between src -> target, if different get diff from src, if missing fallthrough to create
+
+				// 	case "CREATE":
+						// If dir, create dir. If file create file. 
+				// 	}
+				// }
 
 				log.Printf("Syncing started: %v -> %v...\n", cfg.SourceDir, cfg.TargetDir)
 				if syncChan != nil {
@@ -46,8 +57,8 @@ func Sync(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan chan s
 				log.Printf("Sync completed successfully")
 
 				lastEvent = time.Time{} // reset
-				for k := range lastChange {
-					delete(lastChange, k)
+				for k := range fileEvents {
+					delete(fileEvents, k)
 				}
 
 			}

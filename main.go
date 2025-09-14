@@ -3,8 +3,6 @@ package main
 import (
 	"log"
 
-	"github.com/fatih/color"
-
 	"bebop831.com/filo/config"
 	"bebop831.com/filo/util"
 	"github.com/fsnotify/fsnotify"
@@ -46,6 +44,20 @@ func main() {
 	util.PrintConfig(cfg, srcUsage, targetUsage)
 	log.Printf("Starting FILO watch on '%s'...\n", cfg.SourceDir)
 
+	srcTree := util.BuildTree(cfg.SourceDir)
+	targetTree := util.BuildTree(cfg.TargetDir)
+
+	var missing map[string][]*util.FileNode = srcTree.GetMissing(targetTree)
+
+	for k, v := range missing {
+		log.Println(k)
+		for _, e := range v {
+			log.Println("\t", e.Entry.Name())
+		}
+	}
+
+	targetTree.CopyMissing(missing)
+
 	watcher, err := fsnotify.NewWatcher()
 	watcher.Add(cfg.SourceDir)
 	go util.OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: cfg.SourceDir}, watcher)
@@ -54,15 +66,13 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	createColor := color.New(color.FgGreen, color.Bold).SprintFunc()
-	renameColor := color.New(color.FgHiYellow, color.Bold).SprintFunc()
-	removeColor := color.New(color.FgRed, color.Bold).SprintFunc()
-
 	eventChan := make(chan fsnotify.Event)
 	exitChan := make(chan struct{})
 	syncChan := make(chan struct{})
 
-	go util.Sync(eventChan, exitChan, nil, cfg)
+	go util.SyncChanges(eventChan, exitChan, syncChan, cfg)
+
+	// TODO: Turns this into go routine, go util.WatchChanges
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -71,15 +81,14 @@ func main() {
 			}
 			switch event.Op {
 			case fsnotify.Create:
-				log.Println(createColor(event.Op), event.Name)
+				log.Println(util.CreateColor(event.Op), event.Name)
 				go util.OnCreate(&event, watcher)
 
 			case fsnotify.Rename:
-				log.Println(event)
-				log.Println(renameColor(event.Op), event.Name)
+				log.Println(util.RenameColor(event.Op), event.Name)
 
 			case fsnotify.Remove:
-				log.Println(removeColor(event.Op), event.Name)
+				log.Println(util.RemoveColor(event.Op), event.Name)
 
 			case fsnotify.Chmod:
 				continue

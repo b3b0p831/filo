@@ -1,11 +1,15 @@
 package util
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -30,13 +34,19 @@ type FileChange struct {
 
 func BuildTree(rootPath string) *FileTree {
 	ft := &FileTree{Index: make(map[string]*FileNode), Root: &FileNode{Path: rootPath}}
-	ft.Index[rootPath] = ft.Root
+	//ft.Index[rootPath] = ft.Root
 
 	filepath.WalkDir(ft.Root.Path, func(path string, d fs.DirEntry, err error) error {
+
 		currentNode := ft.Index[path]
 		if currentNode == nil {
-			currentNode = &FileNode{}
-			ft.Index[path] = currentNode
+
+			if path == rootPath {
+				currentNode = ft.Root
+			} else {
+				currentNode = &FileNode{}
+				ft.Index[path] = currentNode
+			}
 		}
 
 		currentNode.Path = path
@@ -61,6 +71,186 @@ func BuildTree(rootPath string) *FileTree {
 	})
 
 	return ft
+}
+
+func CompareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
+
+	if srcFileNode == nil || tgtFileNode == nil {
+		return false, nil
+	}
+
+	const bufSize = 4 << 20 //4 MiB
+	initSrcFileInfo, err := srcFileNode.Entry.Info()
+
+	if err != nil {
+		log.Println(err)
+		return false, err
+	}
+
+	initTgtFileInfo, err := tgtFileNode.Entry.Info()
+
+	if err != nil {
+		log.Println(err)
+		return false, err
+	}
+
+	for attempts := 0; attempts < 2; attempts++ {
+		srcFile, err := os.Open(srcFileNode.Path)
+		if err != nil {
+			return false, err
+		}
+
+		tgtFile, err := os.Open(tgtFileNode.Path)
+		if err != nil {
+			srcFile.Close()
+			return false, err
+		}
+
+		srcFileBuf := make([]byte, bufSize)
+		tgtFileBuf := make([]byte, bufSize)
+
+		for {
+			srcBytesRead, srcReadErr := io.ReadFull(srcFile, srcFileBuf)
+			tgtBytesRead, tgtReadErr := io.ReadFull(tgtFile, tgtFileBuf)
+
+			// normalize EOFs
+			// err is ErrUnexpected if not all bytes are read
+			if errors.Is(srcReadErr, io.EOF) || errors.Is(srcReadErr, io.ErrUnexpectedEOF) {
+				srcReadErr = io.EOF
+			}
+
+			if errors.Is(tgtReadErr, io.EOF) || errors.Is(tgtReadErr, io.ErrUnexpectedEOF) {
+				tgtReadErr = io.EOF
+			}
+
+			if (srcReadErr != nil && srcReadErr != io.EOF) || (tgtReadErr != nil && tgtReadErr != io.EOF) {
+				srcFile.Close()
+				tgtFile.Close()
+				if srcReadErr != nil && srcReadErr != io.EOF {
+					return false, srcReadErr
+				}
+				if tgtReadErr != nil && tgtReadErr != io.EOF {
+					return false, tgtReadErr
+				}
+			}
+
+			if srcBytesRead != tgtBytesRead || !bytes.Equal(srcFileBuf[:srcBytesRead], tgtFileBuf[:tgtBytesRead]) {
+				return false, nil
+			}
+
+			if srcReadErr == io.EOF && tgtReadErr == io.EOF {
+				break
+			}
+
+		}
+
+		currentSrcFileInfo, err := srcFileNode.Entry.Info()
+
+		if err != nil {
+			log.Println(err)
+			return false, err
+		}
+
+		currentTgtFileInfo, err := tgtFileNode.Entry.Info()
+
+		if err != nil {
+			log.Println(err)
+			return false, err
+		}
+		srcFile.Close()
+		tgtFile.Close()
+
+		if initSrcFileInfo.Size() != currentSrcFileInfo.Size() ||
+			!initSrcFileInfo.ModTime().Equal(currentSrcFileInfo.ModTime()) ||
+			initTgtFileInfo.Size() != currentTgtFileInfo.Size() ||
+			!initTgtFileInfo.ModTime().Equal(currentTgtFileInfo.ModTime()) {
+			// changed: retry, continue, or return an "unstable" error
+			continue
+		}
+
+		return true, nil
+	}
+	return false, nil
+}
+
+func GetMissingRecurse(sourceRoot, targetRoot *FileNode, missingNodes map[string][]*FileNode) {
+
+	if sourceRoot == nil || targetRoot == nil {
+		return
+	}
+
+	for _, child := range sourceRoot.Children {
+		var tgtNode *FileNode
+
+		if slices.ContainsFunc(targetRoot.Children,
+			func(n *FileNode) bool {
+
+				if child.Entry.Name() == n.Entry.Name() {
+					tgtNode = n
+					sameFilesB, err := CompareFileNodes(child, tgtNode)
+					if err != nil {
+						log.Println(err)
+					}
+					if sameFilesB {
+						log.Println(n.Path, "=", child.Path)
+					} else {
+						log.Println(n.Path, "!=", child.Path)
+					}
+					return true
+				}
+
+				return false
+			}) {
+
+			GetMissingRecurse(child, tgtNode, missingNodes)
+		} else {
+			tmpChildren := missingNodes[targetRoot.Path]
+			missingNodes[targetRoot.Path] = append(tmpChildren, child)
+		}
+	}
+}
+
+// Returns a map where the keys are paths located in otherTree, and the values are the missing children for that key
+// For example, "/mnt/media" -> [tv, yt, movies] means that "/mnt/media" is missing the children 'tv', 'yt', 'movies'
+func (t *FileTree) GetMissing(otherTree *FileTree) map[string][]*FileNode {
+	missing := make(map[string][]*FileNode)
+	GetMissingRecurse(t.Root, otherTree.Root, missing)
+	return missing
+}
+
+func copyChildren(rootPath string, children []*FileNode) {
+
+	for _, cc := range children {
+		srcFilePath := filepath.Join(cc.Parent.Path, cc.Entry.Name())
+		tgtTmpPath := filepath.Join(rootPath, cc.Entry.Name())
+		log.Println(srcFilePath, "->", tgtTmpPath)
+	}
+
+	// if cc.Entry.IsDir() {
+	// 	// Create Directory and recurse
+	// 	_, err := os.Stat(tgtTmpPath)
+	// 	if err == nil {
+	// 		log.Println()
+	// 	}
+
+	// } else {
+	// 	// Handle File Copy
+	// 	log.Println(srcFilePath, "->", tgtTmpPath)
+	// }
+}
+
+// IO Operations
+func (t *FileTree) CopyMissing(missing map[string][]*FileNode) {
+	for targetPath, currentChildren := range missing {
+		log.Println(targetPath)
+		log.Println(currentChildren)
+		go copyChildren(targetPath, currentChildren)
+		// for _, cc := range currentChildren {
+		// 	srcFilePath := filepath.Join(cc.Parent.Path, cc.Entry.Name())
+		// 	tgtTmpPath := filepath.Join(targetPath, cc.Entry.Name())
+		// 	log.Println(srcFilePath, "->", tgtTmpPath)
+		// }
+	}
 }
 
 func (n *FileNode) String() string {
