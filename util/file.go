@@ -73,15 +73,35 @@ func BuildTree(rootPath string) *FileTree {
 	return ft
 }
 
-func CompareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
+func compareFileInfo(srcFileNode, tgtFileNode *FileNode) (bool, error) {
+	srcFileInfo, err := srcFileNode.Entry.Info()
+	if err != nil {
+		log.Print(err)
+		return false, err
+	}
 
-	if srcFileNode == nil || tgtFileNode == nil {
+	tgtFileInfo, err := tgtFileNode.Entry.Info()
+
+	if err != nil {
+		log.Print(err)
+		return false, err
+	}
+
+	return srcFileInfo.Size() == tgtFileInfo.Size() && srcFileInfo.Name() == tgtFileInfo.Name() && srcFileInfo.IsDir() == tgtFileInfo.IsDir(), nil
+}
+
+// Returns true wether or not 2 filenodes are the same
+// For directories, this will recursilve check each child
+// For
+func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
+
+	if srcFileNode == nil || tgtFileNode == nil ||
+		srcFileNode.Entry.IsDir() != tgtFileNode.Entry.IsDir() || len(srcFileNode.Children) != len(tgtFileNode.Children) {
 		return false, nil
 	}
 
 	const bufSize = 4 << 20 //4 MiB
 	initSrcFileInfo, err := srcFileNode.Entry.Info()
-
 	if err != nil {
 		log.Println(err)
 		return false, err
@@ -92,6 +112,21 @@ func CompareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 	if err != nil {
 		log.Println(err)
 		return false, err
+	}
+
+	if srcFileNode.Entry.IsDir() {
+		for _, sc := range srcFileNode.Children {
+			for _, tc := range tgtFileNode.Children {
+				similarFile, err := compareFileInfo(sc, tc)
+				if err != nil {
+					return false, err
+				}
+
+				if similarFile {
+					return compareFileNodes(sc, tc)
+				}
+			}
+		}
 	}
 
 	for attempts := 0; attempts < 2; attempts++ {
@@ -170,6 +205,7 @@ func CompareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 
 		return true, nil
 	}
+	log.Printf("Attempted to compare %v with %v, changes detected. Comparison failed.", srcFileNode, tgtFileNode)
 	return false, nil
 }
 
@@ -185,18 +221,21 @@ func GetMissingRecurse(sourceRoot, targetRoot *FileNode, missingNodes map[string
 		if slices.ContainsFunc(targetRoot.Children,
 			func(n *FileNode) bool {
 
-				if child.Entry.Name() == n.Entry.Name() {
+				if n.Entry.Name() == child.Entry.Name() {
 					tgtNode = n
-					sameFilesB, err := CompareFileNodes(child, tgtNode)
+
+					sameFilesB, err := compareFileNodes(child, tgtNode)
 					if err != nil {
 						log.Println(err)
 					}
+
 					if sameFilesB {
 						log.Println(n.Path, "=", child.Path)
+						return true
 					} else {
 						log.Println(n.Path, "!=", child.Path)
+						return false
 					}
-					return true
 				}
 
 				return false
@@ -245,11 +284,6 @@ func (t *FileTree) CopyMissing(missing map[string][]*FileNode) {
 		log.Println(targetPath)
 		log.Println(currentChildren)
 		go copyChildren(targetPath, currentChildren)
-		// for _, cc := range currentChildren {
-		// 	srcFilePath := filepath.Join(cc.Parent.Path, cc.Entry.Name())
-		// 	tgtTmpPath := filepath.Join(targetPath, cc.Entry.Name())
-		// 	log.Println(srcFilePath, "->", tgtTmpPath)
-		// }
 	}
 }
 
