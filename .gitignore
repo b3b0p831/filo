@@ -1,0 +1,45 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, build output
+*.test
+*.out
+
+# Go build cache and intermediate files
+*.o
+*.a
+*.lo
+*.la
+*.lai
+*.gch
+*.swp
+*.swo
+
+# Go vendor directory (if managed externally)
+vendor/
+
+# IDE/editor configs
+.vscode/
+.idea/
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Thumbnails
+Icon?
+
+# Spotlight files
+.Spotlight-V100
+.Trashes
+
+# Other macOS metadata
+ehthumbs.db
+Thumbs.db
+
