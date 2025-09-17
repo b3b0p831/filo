@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 )
 
@@ -73,30 +72,13 @@ func BuildTree(rootPath string) *FileTree {
 	return ft
 }
 
-func compareFileInfo(srcFileNode, tgtFileNode *FileNode) (bool, error) {
-	srcFileInfo, err := srcFileNode.Entry.Info()
-	if err != nil {
-		log.Print(err)
-		return false, err
-	}
-
-	tgtFileInfo, err := tgtFileNode.Entry.Info()
-
-	if err != nil {
-		log.Print(err)
-		return false, err
-	}
-
-	return srcFileInfo.Size() == tgtFileInfo.Size() && srcFileInfo.Name() == tgtFileInfo.Name() && srcFileInfo.IsDir() == tgtFileInfo.IsDir(), nil
-}
-
 // Returns true wether or not 2 filenodes are the same
 // For directories, this will recursilve check each child
 // For
 func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 
 	if srcFileNode == nil || tgtFileNode == nil ||
-		srcFileNode.Entry.IsDir() != tgtFileNode.Entry.IsDir() || len(srcFileNode.Children) != len(tgtFileNode.Children) {
+		srcFileNode.Entry.IsDir() != tgtFileNode.Entry.IsDir() {
 		return false, nil
 	}
 
@@ -117,12 +99,12 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 	if srcFileNode.Entry.IsDir() {
 		for _, sc := range srcFileNode.Children {
 			for _, tc := range tgtFileNode.Children {
-				similarFile, err := compareFileInfo(sc, tc)
-				if err != nil {
-					return false, err
-				}
+				if srcFileNode.Entry.Name() == tgtFileNode.Entry.Name() {
+					// similarFile, err := compareFileInfo(sc, tc)
+					// if err != nil {
+					// 	return false, err
+					// }
 
-				if similarFile {
 					return compareFileNodes(sc, tc)
 				}
 			}
@@ -215,36 +197,40 @@ func GetMissingRecurse(sourceRoot, targetRoot *FileNode, missingNodes map[string
 		return
 	}
 
+	///TODO: Fix code such that missingNOdes contains correct filenodes.
 	for _, child := range sourceRoot.Children {
-		var tgtNode *FileNode
 
-		if slices.ContainsFunc(targetRoot.Children,
-			func(n *FileNode) bool {
+		//ignore files that start with "."
+		if strings.HasPrefix(child.Entry.Name(), ".") {
+			continue
+		}
 
-				if n.Entry.Name() == child.Entry.Name() {
-					tgtNode = n
-
+		didContain := false
+		for _, tgtNode := range targetRoot.Children {
+			if tgtNode.Entry.Name() == child.Entry.Name() && tgtNode.Entry.IsDir() == child.Entry.IsDir() {
+				if tgtNode.Entry.IsDir() {
+					log.Println(child.Path, "<->", tgtNode.Path)
+					GetMissingRecurse(child, tgtNode, missingNodes)
+					didContain = true
+				} else {
 					sameFilesB, err := compareFileNodes(child, tgtNode)
 					if err != nil {
 						log.Println(err)
 					}
 
 					if sameFilesB {
-						log.Println(n.Path, "=", child.Path)
-						return true
-					} else {
-						log.Println(n.Path, "!=", child.Path)
-						return false
+						log.Println(tgtNode.Entry.Name(), "==", child.Entry.Name())
+						didContain = true
 					}
 				}
+			}
+		}
 
-				return false
-			}) {
-
-			GetMissingRecurse(child, tgtNode, missingNodes)
-		} else {
-			tmpChildren := missingNodes[targetRoot.Path]
-			missingNodes[targetRoot.Path] = append(tmpChildren, child)
+		if !didContain {
+			log.Println(targetRoot.Path, "!=", child.Entry.Name())
+			fp := filepath.Join(targetRoot.Path)
+			tmpChildren := missingNodes[fp]
+			missingNodes[fp] = append(tmpChildren, child)
 		}
 	}
 }
@@ -264,18 +250,6 @@ func copyChildren(rootPath string, children []*FileNode) {
 		tgtTmpPath := filepath.Join(rootPath, cc.Entry.Name())
 		log.Println(srcFilePath, "->", tgtTmpPath)
 	}
-
-	// if cc.Entry.IsDir() {
-	// 	// Create Directory and recurse
-	// 	_, err := os.Stat(tgtTmpPath)
-	// 	if err == nil {
-	// 		log.Println()
-	// 	}
-
-	// } else {
-	// 	// Handle File Copy
-	// 	log.Println(srcFilePath, "->", tgtTmpPath)
-	// }
 }
 
 // IO Operations
@@ -284,6 +258,11 @@ func (t *FileTree) CopyMissing(missing map[string][]*FileNode) {
 		log.Println(targetPath)
 		log.Println(currentChildren)
 		go copyChildren(targetPath, currentChildren)
+		// for _, cc := range currentChildren {
+		// 	srcFilePath := filepath.Join(cc.Parent.Path, cc.Entry.Name())
+		// 	tgtTmpPath := filepath.Join(targetPath, cc.Entry.Name())
+		// 	log.Println(srcFilePath, "->", tgtTmpPath)
+		// }
 	}
 }
 
