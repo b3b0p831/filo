@@ -4,16 +4,21 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"sync"
 	"time"
 
 	"bebop831.com/filo/config"
+
 	"github.com/fatih/color"
 	"github.com/shirou/gopsutil/v4/disk"
 )
 
-var Mu sync.Mutex
 var re regexp.Regexp = *regexp.MustCompile(`^\d+[smh]$`)
+
+var Cfg *config.Config = config.Load()
+
+func init() {
+	Cfg = config.Load()
+}
 
 // / ===== AI Generated =======
 func PrintBanner() {

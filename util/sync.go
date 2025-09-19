@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	"bebop831.com/filo/config"
@@ -23,7 +24,9 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 		select {
 		case e := <-eventChan:
 			changesSlice := fileEvents[e.Op.String()] // i.e fileEvents["CREATE"]
-			fileEvents[e.Op.String()] = append(changesSlice, e.Name)
+			if !slices.Contains(changesSlice, e.Name) {
+				fileEvents[e.Op.String()] = append(changesSlice, e.Name)
+			}
 			lastEvent = time.Now()
 
 		case <-time.After(minInterval):
@@ -39,13 +42,13 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 				// for Op, Paths := range fileEvents {
 				// 	switch Op {
 				// 	case "RENAME","REMOVE":
-						// Delete the file where the event is Rename or Remove. Will treat same for now
+				// Delete the file where the event is Rename or Remove. Will treat same for now
 
 				// 	case "WRITE":
-						// Compare fileState info between src -> target, if different get diff from src, if missing fallthrough to create
+				// Compare fileState info between src -> target, if different get diff from src, if missing fallthrough to create
 
 				// 	case "CREATE":
-						// If dir, create dir. If file create file. 
+				// If dir, create dir. If file create file.
 				// 	}
 				// }
 

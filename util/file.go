@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -64,6 +65,11 @@ func BuildTree(rootPath string) *FileTree {
 				currentNode.Children = append(currentNode.Children, childNode)
 				ft.Index[childNode.Path] = childNode
 			}
+
+			// You can get with this, or you can get with that
+			slices.SortFunc(currentNode.Children, func(this, that *FileNode) int {
+				return strings.Compare(this.Entry.Name(), that.Entry.Name())
+			})
 		}
 
 		return nil
@@ -82,7 +88,8 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 		return false, nil
 	}
 
-	const bufSize = 4 << 20 //4 MiB
+	//	const bufSize = 4 << 20 //4 MiB
+	const bufSize = 4 << 10 //128 MiB
 	initSrcFileInfo, err := srcFileNode.Entry.Info()
 	if err != nil {
 		log.Println(err)
@@ -100,11 +107,6 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 		for _, sc := range srcFileNode.Children {
 			for _, tc := range tgtFileNode.Children {
 				if srcFileNode.Entry.Name() == tgtFileNode.Entry.Name() {
-					// similarFile, err := compareFileInfo(sc, tc)
-					// if err != nil {
-					// 	return false, err
-					// }
-
 					return compareFileNodes(sc, tc)
 				}
 			}
@@ -209,7 +211,7 @@ func GetMissingRecurse(sourceRoot, targetRoot *FileNode, missingNodes map[string
 		for _, tgtNode := range targetRoot.Children {
 			if tgtNode.Entry.Name() == child.Entry.Name() && tgtNode.Entry.IsDir() == child.Entry.IsDir() {
 				if tgtNode.Entry.IsDir() {
-					log.Println(child.Path, "<->", tgtNode.Path)
+					log.Println("COMPARE", child.Path, "<->", tgtNode.Path)
 					GetMissingRecurse(child, tgtNode, missingNodes)
 					didContain = true
 				} else {
@@ -219,7 +221,7 @@ func GetMissingRecurse(sourceRoot, targetRoot *FileNode, missingNodes map[string
 					}
 
 					if sameFilesB {
-						log.Println(tgtNode.Entry.Name(), "==", child.Entry.Name())
+						//log.Println(tgtNode.Entry.Name(), "==", child.Entry.Name())
 						didContain = true
 					}
 				}
@@ -227,7 +229,7 @@ func GetMissingRecurse(sourceRoot, targetRoot *FileNode, missingNodes map[string
 		}
 
 		if !didContain {
-			log.Println(targetRoot.Path, "!=", child.Entry.Name())
+			//log.Println(targetRoot.Path, "!=", child.Entry.Name())
 			fp := filepath.Join(targetRoot.Path)
 			tmpChildren := missingNodes[fp]
 			missingNodes[fp] = append(tmpChildren, child)
@@ -255,14 +257,7 @@ func copyChildren(rootPath string, children []*FileNode) {
 // IO Operations
 func (t *FileTree) CopyMissing(missing map[string][]*FileNode) {
 	for targetPath, currentChildren := range missing {
-		log.Println(targetPath)
-		log.Println(currentChildren)
 		go copyChildren(targetPath, currentChildren)
-		// for _, cc := range currentChildren {
-		// 	srcFilePath := filepath.Join(cc.Parent.Path, cc.Entry.Name())
-		// 	tgtTmpPath := filepath.Join(targetPath, cc.Entry.Name())
-		// 	log.Println(srcFilePath, "->", tgtTmpPath)
-		// }
 	}
 }
 

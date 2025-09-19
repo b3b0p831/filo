@@ -2,8 +2,8 @@ package main
 
 import (
 	"log"
+	"time"
 
-	"bebop831.com/filo/config"
 	"bebop831.com/filo/util"
 	"github.com/fsnotify/fsnotify"
 
@@ -11,56 +11,45 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
-
-	if cfg.LogLevel == "debug" {
+	if util.Cfg.LogLevel == "debug" {
 		log.Println("Starting FILO...")
 	}
 
 	util.PrintBanner()
 
-	if err != nil {
-		log.Println(err)
-	}
-
-	if len(cfg.SourceDir) == 0 {
+	if len(util.Cfg.SourceDir) == 0 {
 		log.Fatalln("Invalid source dir.")
 	}
 
-	if len(cfg.TargetDir) == 0 {
+	if len(util.Cfg.TargetDir) == 0 {
 		log.Fatalln("Invalid target dir.")
 	}
 
-	targetUsage, err := disk.Usage(cfg.TargetDir)
+	targetUsage, err := disk.Usage(util.Cfg.TargetDir)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	srcUsage, err := disk.Usage(cfg.SourceDir)
+	srcUsage, err := disk.Usage(util.Cfg.SourceDir)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	util.PrintConfig(cfg, srcUsage, targetUsage)
-	log.Printf("Starting FILO watch on '%s'...\n", cfg.SourceDir)
+	util.PrintConfig(util.Cfg, srcUsage, targetUsage)
+	log.Printf("Starting FILO watch on '%s'...\n", util.Cfg.SourceDir)
 
-	srcTree := util.BuildTree(cfg.SourceDir)
-	targetTree := util.BuildTree(cfg.TargetDir)
+	srcTree := util.BuildTree(util.Cfg.SourceDir)
+	targetTree := util.BuildTree(util.Cfg.TargetDir)
 
+	rn := time.Now()
 	var missing map[string][]*util.FileNode = srcTree.GetMissing(targetTree)
-
-	for k, v := range missing {
-		log.Println(k)
-		for _, e := range v {
-			log.Println("\t", e.Entry.Name())
-		}
-	}
+	log.Println("Elapsed:", time.Since(rn))
 
 	targetTree.CopyMissing(missing)
 
 	watcher, err := fsnotify.NewWatcher()
-	watcher.Add(cfg.SourceDir)
-	go util.OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: cfg.SourceDir}, watcher)
+	watcher.Add(util.Cfg.SourceDir)
+	go util.OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: util.Cfg.SourceDir}, watcher)
 
 	if err != nil {
 		log.Fatalln(err)
@@ -70,7 +59,7 @@ func main() {
 	exitChan := make(chan struct{})
 	syncChan := make(chan struct{})
 
-	go util.SyncChanges(eventChan, exitChan, syncChan, cfg)
+	go util.SyncChanges(eventChan, exitChan, syncChan, util.Cfg)
 
 	// TODO: Turns this into go routine, go util.WatchChanges
 	for {
@@ -94,7 +83,9 @@ func main() {
 				continue
 
 			default:
-				log.Println(event.Op, event.Name)
+				if util.Cfg.LogLevel == "debug" {
+					log.Println(event.Op, event.Name)
+				}
 			}
 
 			eventChan <- event

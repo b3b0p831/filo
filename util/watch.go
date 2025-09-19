@@ -7,10 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fsnotify/fsnotify"
 	"bebop831.com/filo/config"
-	//	"github.com/fatih/color"
-
+	"github.com/fsnotify/fsnotify"
 )
 
 func OnCreate(event *fsnotify.Event, watcher *fsnotify.Watcher) {
@@ -31,8 +29,8 @@ func OnCreate(event *fsnotify.Event, watcher *fsnotify.Watcher) {
 	}
 }
 
-func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *config.Config){
-		// Turns this into go routine so that it matches above(i.e util.WatchChanges)
+func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *config.Config) {
+	// Turns this into go routine so that it matches above(i.e WatchChanges)
 
 	watcher, err := fsnotify.NewWatcher()
 	watcher.Add(cfg.SourceDir)
@@ -42,7 +40,7 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *co
 		log.Fatalln(err)
 	}
 
-	// Turns this into go routine
+	// TODO: Turns this into go routine, go WatchChanges
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -75,6 +73,8 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *co
 				return
 			}
 			log.Println("error:", err)
+
+		case <-exitChan:
 		}
 	}
 }

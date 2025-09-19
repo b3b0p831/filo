@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func Load() (*Config, error) {
+func Load() *Config {
 	v := viper.New()
 
 	// Set defaults.
@@ -27,15 +27,14 @@ func Load() (*Config, error) {
 
 	// Read config
 	if err := v.ReadInConfig(); err != nil {
-		log.Default().Println("failed to read config:", err)
+		log.Fatal("failed to read config:", err)
 	}
 
 	// Unmarshal into struct
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
-		log.Default().Println("failed to read config:", err)
-
+		log.Fatal("failed to read config:", err)
 	}
 
-	return &cfg, nil
+	return &cfg
 }
