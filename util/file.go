@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
+	"sync"
 )
 
 // FileNode represents a directory entry and its children.
@@ -27,16 +29,20 @@ type FileTree struct {
 	Index map[string]*FileNode
 }
 
-type FileChange struct {
-	Op   string
-	Path string
-}
-
 func BuildTree(rootPath string) *FileTree {
 	ft := &FileTree{Index: make(map[string]*FileNode), Root: &FileNode{Path: rootPath}}
-	//ft.Index[rootPath] = ft.Root
 
 	filepath.WalkDir(ft.Root.Path, func(path string, d fs.DirEntry, err error) error {
+
+		switch {
+		case err != nil && rootPath == path:
+			ft = nil
+			log.Println("ROOT", err)
+			return filepath.SkipAll
+		case err != nil:
+			log.Println(err)
+			return filepath.SkipDir
+		}
 
 		currentNode := ft.Index[path]
 		if currentNode == nil {
@@ -80,7 +86,6 @@ func BuildTree(rootPath string) *FileTree {
 
 // Returns true wether or not 2 filenodes are the same
 // For directories, this will recursilve check each child
-// For
 func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 
 	if srcFileNode == nil || tgtFileNode == nil ||
@@ -193,55 +198,119 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 	return false, nil
 }
 
-func GetMissingRecurse(sourceRoot, targetRoot *FileNode, missingNodes map[string][]*FileNode) {
+func walkMissingIn(sourceRoot, targetRoot *FileNode, missingNodes map[string][]*FileNode, wg *sync.WaitGroup) {
 
 	if sourceRoot == nil || targetRoot == nil {
 		return
 	}
 
-	///TODO: Fix code such that missingNOdes contains correct filenodes.
-	for _, child := range sourceRoot.Children {
-
+	for _, srcChildNode := range sourceRoot.Children {
 		//ignore files that start with "."
-		if strings.HasPrefix(child.Entry.Name(), ".") {
+		if strings.HasPrefix(srcChildNode.Entry.Name(), ".") {
 			continue
 		}
+		wg.Go(func() {
 
-		didContain := false
-		for _, tgtNode := range targetRoot.Children {
-			if tgtNode.Entry.Name() == child.Entry.Name() && tgtNode.Entry.IsDir() == child.Entry.IsDir() {
-				if tgtNode.Entry.IsDir() {
-					log.Println("COMPARE", child.Path, "<->", tgtNode.Path)
-					GetMissingRecurse(child, tgtNode, missingNodes)
-					didContain = true
-				} else {
-					sameFilesB, err := compareFileNodes(child, tgtNode)
-					if err != nil {
-						log.Println(err)
-					}
+			didContain := false
+			for _, tgtNode := range targetRoot.Children {
+				if tgtNode.Entry.Name() == srcChildNode.Entry.Name() && tgtNode.Entry.IsDir() == srcChildNode.Entry.IsDir() {
+					if tgtNode.Entry.IsDir() {
+						log.Println("COMPARE", srcChildNode.Path, "<->", tgtNode.Path)
+						//TODO: add wait group for walkMissing routines(fork-join?)
+						walkMissingIn(srcChildNode, tgtNode, missingNodes, wg)
 
-					if sameFilesB {
-						//log.Println(tgtNode.Entry.Name(), "==", child.Entry.Name())
 						didContain = true
+						continue
+					} else {
+						sameFilesB, err := compareFileNodes(srcChildNode, tgtNode)
+						if err != nil {
+							log.Println(err)
+						}
+						didContain = sameFilesB
 					}
 				}
 			}
-		}
 
-		if !didContain {
-			//log.Println(targetRoot.Path, "!=", child.Entry.Name())
-			fp := filepath.Join(targetRoot.Path)
-			tmpChildren := missingNodes[fp]
-			missingNodes[fp] = append(tmpChildren, child)
+			if !didContain {
+				//log.Println(targetRoot.Path, "!=", child.Entry.Name())
+				fp := filepath.Join(targetRoot.Path)
+
+				Mu.Lock()
+				tmpChildren := missingNodes[fp]
+				missingNodes[fp] = append(tmpChildren, srcChildNode)
+				Mu.Unlock()
+			}
+		})
+	}
+}
+
+func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[string][]*FileNode, wg *sync.WaitGroup) {
+
+	if sourceRoot == nil || targetRoot == nil {
+		return
+	}
+
+	for _, srcChildNode := range sourceRoot.Children {
+		//ignore files that start with "."
+		if strings.HasPrefix(srcChildNode.Entry.Name(), ".") {
+			continue
 		}
+		wg.Go(func() {
+
+			didContain := false
+			tgtNodeIdx := sort.Search(len(targetRoot.Children), func(i int) bool {
+				// Compare names first
+				cmp := strings.Compare(targetRoot.Children[i].Entry.Name(), srcChildNode.Entry.Name())
+				if cmp == 0 {
+					// Found exact match
+					return true
+				}
+				return cmp >= 0 // true once we've passed or matched the target
+			})
+
+			if tgtNodeIdx < len(targetRoot.Children) {
+				tgtNode := targetRoot.Children[tgtNodeIdx]
+				if tgtNode.Entry.IsDir() == srcChildNode.Entry.IsDir() {
+					if tgtNode.Entry.IsDir() {
+						log.Println("COMPARE", srcChildNode.Path, "<->", tgtNode.Path)
+
+						walkMissingIn(srcChildNode, tgtNode, missingNodes, wg)
+						didContain = true
+					} else {
+						sameFilesB, err := compareFileNodes(srcChildNode, tgtNode)
+						if err != nil {
+							log.Println(err)
+						}
+						didContain = sameFilesB
+					}
+				}
+			}
+
+			if !didContain {
+				//log.Println(targetRoot.Path, "!=", child.Entry.Name())
+				fp := filepath.Join(targetRoot.Path)
+
+				Mu.Lock()
+				tmpChildren := missingNodes[fp]
+				missingNodes[fp] = append(tmpChildren, srcChildNode)
+				Mu.Unlock()
+			}
+		})
 	}
 }
 
 // Returns a map where the keys are paths located in otherTree, and the values are the missing children for that key
-// For example, "/mnt/media" -> [tv, yt, movies] means that "/mnt/media" is missing the children 'tv', 'yt', 'movies'
-func (t *FileTree) GetMissing(otherTree *FileTree) map[string][]*FileNode {
+// For example, {"/mnt/media" : [tv, yt, movies]} means that directory "/mnt/media" in tgt is missing the children 'tv', 'yt', 'movies' which are present in src
+func (t *FileTree) MissingIn(otherTree *FileTree, runAfter func()) map[string][]*FileNode {
 	missing := make(map[string][]*FileNode)
-	GetMissingRecurse(t.Root, otherTree.Root, missing)
+	var wg sync.WaitGroup
+	walkMissingInBinary(t.Root, otherTree.Root, missing, &wg)
+	wg.Wait()
+
+	if runAfter != nil {
+		runAfter()
+	}
+
 	return missing
 }
 

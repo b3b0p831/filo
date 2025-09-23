@@ -42,9 +42,11 @@ func main() {
 	targetTree := util.BuildTree(util.Cfg.TargetDir)
 
 	rn := time.Now()
-	var missing map[string][]*util.FileNode = srcTree.GetMissing(targetTree)
-	log.Println("Elapsed:", time.Since(rn))
+	var missing map[string][]*util.FileNode = srcTree.MissingIn(targetTree, func() {
+		log.Println("Elapsed:", time.Since(rn))
+	})
 
+	log.Println(missing)
 	targetTree.CopyMissing(missing)
 
 	watcher, err := fsnotify.NewWatcher()

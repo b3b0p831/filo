@@ -1,10 +1,33 @@
 package testing
 
 import (
+	"fmt"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"bebop831.com/filo/util"
+)
+
+var (
+	test_root = "/Users/bebop831/Dev/filo_tests/"
+	test_dirs = []string{
+		//Control
+		filepath.Join(test_root, "control"),
+		//Normal Pass Test Cases
+		filepath.Join(test_root, "should_pass/t1"),
+		filepath.Join(test_root, "should_pass/t2"),
+		filepath.Join(test_root, "should_pass/t3"),
+		// Normal Fail Test Cases
+		filepath.Join(test_root, "should_err/t1"),
+		filepath.Join(test_root, "should_err/t2"),
+		filepath.Join(test_root, "should_err/t3"),
+		// Malicous Test Cases
+		filepath.Join(test_root, "hackerman/t1"),
+		filepath.Join(test_root, "hackerman/t2"),
+		filepath.Join(test_root, "hackerman/t3"),
+	}
 )
 
 func TestGetTimeInterval(t *testing.T) {
@@ -69,5 +92,40 @@ func TestGetTimeInterval(t *testing.T) {
 		if currentTimeVal != expectedTimeVal {
 			t.Errorf("util.GetTimeInterval(%s) != %v\n", timeStr, expectedTimeVal)
 		}
+	}
+}
+
+func TestBuildTree(t *testing.T) {
+	for _, currentPath := range test_dirs {
+		tmpTree := util.BuildTree(currentPath)
+
+		if tmpTree == nil {
+			t.Errorf("expected non-nil tree for %s", currentPath)
+			continue
+		}
+
+		// Example: control dir should have exactly 5 nodes in index
+		if strings.Contains(currentPath, "control") {
+			expectedCount := 5
+			if len(tmpTree.Index) != expectedCount {
+				t.Errorf("expected %d nodes in index, got %d", expectedCount, len(tmpTree.Index))
+			}
+
+			// Check that a known file exists
+			file1Path := filepath.Join(currentPath, "file1.txt")
+			if _, ok := tmpTree.Index[file1Path]; !ok {
+				t.Errorf("expected node for %s not found in index", file1Path)
+			}
+
+			// Check that subdirA has 2 children
+			subdirAPath := filepath.Join(currentPath, "subdirA")
+			subdirNode, ok := tmpTree.Index[subdirAPath]
+			if !ok {
+				t.Errorf("expected node for %s not found in index", subdirAPath)
+			} else if len(subdirNode.Children) != 2 {
+				t.Errorf("expected subdirA to have 2 children, got %d", len(subdirNode.Children))
+			}
+		}
+		fmt.Println(currentPath)
 	}
 }

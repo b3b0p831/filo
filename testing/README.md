@@ -16,10 +16,11 @@ In order to accomplish this, filo performs the following functions:
 
 #### A *FileTree is a snapshot in time
 we take one in the beggninng to perform initial sync
-Everytime changes are detected, after a period of inactivity and if FILO_LOCK is unlocked FILO_LOCK will lock filo from syncing changes until the current sync is completed.
+Everytime changes are detected, enough time has elapsed, AND FILO_LOCK is unlocked(i.e sync not in progress) a new *FileTree is built.
 
 
 ### TODO: 
     1. Need to create atomic structure or a filo db
     2. "Scanned 10GB in 33.168 seconds"
+    3. Implement FILO_LOCK, currently sync doesn't check if a sync is currently active. FILO_LOCK will lock filo from syncing changes until the current sync is completed.
     

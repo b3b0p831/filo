@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	"bebop831.com/filo/config"
@@ -14,10 +15,12 @@ import (
 
 var re regexp.Regexp = *regexp.MustCompile(`^\d+[smh]$`)
 
+var Mu *sync.Mutex
 var Cfg *config.Config = config.Load()
 
 func init() {
 	Cfg = config.Load()
+	Mu = &sync.Mutex{}
 }
 
 // / ===== AI Generated =======

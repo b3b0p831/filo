@@ -12,7 +12,7 @@ import (
 )
 
 func OnCreate(event *fsnotify.Event, watcher *fsnotify.Watcher) {
-	info, err := os.Stat(filepath.Clean(event.Name))
+	info, err := os.Lstat(filepath.Clean(event.Name)) // Stat follows symlink, Lstat returns sysmlink info
 	if err != nil {
 		log.Println(err)
 		return
@@ -58,8 +58,8 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *co
 			case fsnotify.Remove:
 				log.Println(RemoveColor(event.Op), event.Name)
 
-			case fsnotify.Chmod:
-				continue
+			// case fsnotify.Chmod:
+			// 	continue
 
 			default:
 				log.Println(event.Op, event.Name)

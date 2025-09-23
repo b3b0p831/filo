@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"slices"
+	"strings"
 	"time"
 
 	"bebop831.com/filo/config"
@@ -27,6 +28,7 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 			if !slices.Contains(changesSlice, e.Name) {
 				fileEvents[e.Op.String()] = append(changesSlice, e.Name)
 			}
+
 			lastEvent = time.Now()
 
 		case <-time.After(minInterval):
@@ -37,7 +39,16 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 
 				fmt.Println(srcFileTree)
 				fmt.Println(dstFileTree)
-				fmt.Println(fileEvents) //These are the changes that occurred while watching src
+				for e, changes := range fileEvents {
+					slices.SortFunc(changes, func(this, that string) int {
+						return strings.Compare(this, that)
+					})
+					fmt.Println(e)
+					for _, c := range changes {
+						fmt.Println("\t", c)
+					}
+				}
+				fmt.Println(srcFileTree.MissingIn(dstFileTree, nil))
 
 				// for Op, Paths := range fileEvents {
 				// 	switch Op {
