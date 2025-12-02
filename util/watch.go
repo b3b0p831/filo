@@ -2,7 +2,6 @@ package util
 
 import (
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,10 +10,11 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// Watch new dirs, watching files is not reccomended in docs
 func OnCreate(event *fsnotify.Event, watcher *fsnotify.Watcher) {
 	info, err := os.Lstat(filepath.Clean(event.Name)) // Stat follows symlink, Lstat returns sysmlink info
 	if err != nil {
-		log.Println(err)
+		Flogger.Println(err)
 		return
 	}
 
@@ -37,7 +37,7 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *co
 	go OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: cfg.SourceDir}, watcher)
 
 	if err != nil {
-		log.Fatalln(err)
+		Flogger.Fatalln(err)
 	}
 
 	// TODO: Turns this into go routine, go WatchChanges
@@ -47,22 +47,25 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *co
 			if !ok {
 				return
 			}
+
 			switch event.Op {
 			case fsnotify.Create:
-				log.Println(CreateColor(event.Op), event.Name)
+				Flogger.Println(CreateColor(event.Op), event.Name)
 				go OnCreate(&event, watcher)
 
 			case fsnotify.Rename:
-				log.Println(RenameColor(event.Op), event.Name)
+				Flogger.Println(RenameColor(event.Op), event.Name)
 
 			case fsnotify.Remove:
-				log.Println(RemoveColor(event.Op), event.Name)
+				Flogger.Println(RemoveColor(event.Op), event.Name)
 
 			// case fsnotify.Chmod:
 			// 	continue
 
 			default:
-				log.Println(event.Op, event.Name)
+				if Cfg.LogLevel == "debug"{
+					Flogger.Println(event.Op, event.Name)
+				}
 			}
 
 			eventChan <- event
@@ -72,7 +75,7 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *co
 				exitChan <- struct{}{}
 				return
 			}
-			log.Println("error:", err)
+			Flogger.Println("error:", err)
 
 		case <-exitChan:
 		}

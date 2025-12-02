@@ -3,7 +3,6 @@ package config
 
 import (
 	"log"
-
 	"github.com/spf13/viper"
 )
 
@@ -23,6 +22,7 @@ func Load() *Config {
 	// if dir, err := os.UserConfigDir(); err == nil {
 	// 	v.AddConfigPath(filepath.Join(dir, "mediasync"))
 	// }
+	v.AddConfigPath("/etc/filo/filo.conf") // fallback: current dir
 	v.AddConfigPath(".") // fallback: current dir
 
 	// Read config

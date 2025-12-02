@@ -2,10 +2,15 @@ package util
 
 import (
 	"fmt"
+	"log"
 	"regexp"
 	"strconv"
 	"sync"
 	"time"
+	"syscall"
+	"os"
+	"os/signal"
+
 
 	"bebop831.com/filo/config"
 
@@ -17,10 +22,19 @@ var re regexp.Regexp = *regexp.MustCompile(`^\d+[smh]$`)
 
 var Mu *sync.Mutex
 var Cfg *config.Config = config.Load()
+var Flogger *log.Logger
 
 func init() {
 	Cfg = config.Load()
 	Mu = &sync.Mutex{}
+	Flogger = log.New(os.Stdin, "", log.Ltime | log.Lshortfile)
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		Flogger.Println("Caught keyboard interrupt CTRL-C.")
+		os.Exit(1)
+	}()
 }
 
 // / ===== AI Generated =======
@@ -40,7 +54,6 @@ func PrintBanner() {
 	fmt.Println(white("         ") + yellow("先入後出 同期"))
 	fmt.Println()
 }
-
 // ============================
 
 const (

@@ -1,5 +1,5 @@
 source_dir = "/Users/bebop831/Dev/serv"
-target_dir = "/Volumes/usb"
+target_dir = "/Users/bebop831/Dev/filo_target"
 max_fill = 0.95
 log_level = "debug"
-sync_delay = "7s"
+sync_delay = "5s"

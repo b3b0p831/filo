@@ -1,34 +1,104 @@
 package testing
 
 import (
-	"fmt"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"bebop831.com/filo/util"
 )
 
+type BuildTreeTest struct {
+	name      string
+	path      string
+	wantNodes int
+	wantErr   bool
+	check     func(t *testing.T, tree *util.FileTree)
+}
+
 var (
 	test_root = "/Users/bebop831/Dev/filo_tests/"
-	test_dirs = []string{
-		//Control
-		filepath.Join(test_root, "control"),
-		//Normal Pass Test Cases
-		filepath.Join(test_root, "should_pass/t1"),
-		filepath.Join(test_root, "should_pass/t2"),
-		filepath.Join(test_root, "should_pass/t3"),
-		// Normal Fail Test Cases
-		filepath.Join(test_root, "should_err/t1"),
-		filepath.Join(test_root, "should_err/t2"),
-		filepath.Join(test_root, "should_err/t3"),
-		// Malicous Test Cases
-		filepath.Join(test_root, "hackerman/t1"),
-		filepath.Join(test_root, "hackerman/t2"),
-		filepath.Join(test_root, "hackerman/t3"),
-	}
 )
+
+var buildTreeTests = []BuildTreeTest{
+	{
+		name:      "control",
+		path:      filepath.Join(test_root, "control"),
+		wantNodes: 5,
+		check: func(t *testing.T, tree *util.FileTree) {
+			file1Path := filepath.Join(test_root, "control", "file1.txt")
+			if _, ok := tree.Index[file1Path]; !ok {
+				t.Errorf("expected %s in index", file1Path)
+			}
+			subdirAPath := filepath.Join(test_root, "control", "subdirA")
+			if len(tree.Index[subdirAPath].Children) != 2 {
+				t.Errorf("subdirA children mismatch")
+			}
+		},
+	},
+	{
+		name:      "Large Library",
+		path:      "/Users/bebop831/Dev/serv",
+		wantNodes: 5, //Shoud be len(tree.Index) - 1
+		check: func(t *testing.T, tree *util.FileTree) {
+
+			for k, v := range tree.Index {
+				if !util.IsAppovedPath(v.Entry.Name()) {
+					t.Errorf("unapproved file '%s' detected in filetree", k)
+				}
+			}
+
+			// file2test := "One.Battle.After.Another.2025.1080p.WEBRip.10Bit.DDP5.1.x265-NeoNoir.mkv"
+			// file1Path := filepath.Join("/Users/bebop831/Dev/serv/movies", file2test)
+			// if _, ok := tree.Index[file1Path]; !ok {
+			// 	t.Errorf("expected %s in index", file1Path)
+			// }
+
+		},
+	},
+	{
+		name:      "should_pass",
+		path:      filepath.Join(test_root, "should_pass"),
+		wantNodes: 12, //Shoud be len(tree.Index) - 1
+		check: func(t *testing.T, tree *util.FileTree) {
+
+			for k, v := range tree.Index {
+				if !util.IsAppovedPath(v.Entry.Name()) {
+					t.Errorf("unapproved file '%s' detected in filetree", k)
+				}
+			}
+
+
+			// file2test := "One.Battle.After.Another.2025.1080p.WEBRip.10Bit.DDP5.1.x265-NeoNoir.mkv"
+			// file1Path := filepath.Join("/Users/bebop831/Dev/serv/movies", file2test)
+			// if _, ok := tree.Index[file1Path]; !ok {
+			// 	t.Errorf("expected %s in index", file1Path)
+			// }
+
+		},
+	},
+		{
+		name:      "hackerman",
+		path:      filepath.Join(test_root, "hackerman"),
+		wantNodes: 6357, //Shoud be len(tree.Index) - 1
+		check: func(t *testing.T, tree *util.FileTree) {
+
+			for k, v := range tree.Index {
+				if !util.IsAppovedPath(v.Entry.Name()) {
+					t.Errorf("unapproved file '%s' detected in filetree", k)
+				}
+			}
+
+
+			// file2test := "One.Battle.After.Another.2025.1080p.WEBRip.10Bit.DDP5.1.x265-NeoNoir.mkv"
+			// file1Path := filepath.Join("/Users/bebop831/Dev/serv/movies", file2test)
+			// if _, ok := tree.Index[file1Path]; !ok {
+			// 	t.Errorf("expected %s in index", file1Path)
+			// }
+
+		},
+	},
+}
 
 func TestGetTimeInterval(t *testing.T) {
 	test_data := map[string]time.Duration{
@@ -96,36 +166,26 @@ func TestGetTimeInterval(t *testing.T) {
 }
 
 func TestBuildTree(t *testing.T) {
-	for _, currentPath := range test_dirs {
-		tmpTree := util.BuildTree(currentPath)
-
-		if tmpTree == nil {
-			t.Errorf("expected non-nil tree for %s", currentPath)
-			continue
-		}
-
-		// Example: control dir should have exactly 5 nodes in index
-		if strings.Contains(currentPath, "control") {
-			expectedCount := 5
-			if len(tmpTree.Index) != expectedCount {
-				t.Errorf("expected %d nodes in index, got %d", expectedCount, len(tmpTree.Index))
+	for _, tt := range buildTreeTests {
+		t.Run(tt.name, func(t *testing.T) {
+			tree := util.BuildTree(tt.path)
+			if tree == nil && !tt.wantErr {
+				t.Fatalf("expected non-nil tree, got nil")
 			}
-
-			// Check that a known file exists
-			file1Path := filepath.Join(currentPath, "file1.txt")
-			if _, ok := tmpTree.Index[file1Path]; !ok {
-				t.Errorf("expected node for %s not found in index", file1Path)
+			if tree != nil && tt.wantNodes > 0 {
+				if got := len(tree.Index); got != tt.wantNodes {
+					t.Errorf("expected %d nodes, got %d", tt.wantNodes, got)
+				}
 			}
-
-			// Check that subdirA has 2 children
-			subdirAPath := filepath.Join(currentPath, "subdirA")
-			subdirNode, ok := tmpTree.Index[subdirAPath]
-			if !ok {
-				t.Errorf("expected node for %s not found in index", subdirAPath)
-			} else if len(subdirNode.Children) != 2 {
-				t.Errorf("expected subdirA to have 2 children, got %d", len(subdirNode.Children))
+			if tt.check != nil && tree != nil {
+				tt.check(t, tree)
 			}
-		}
-		fmt.Println(currentPath)
+		})
 	}
 }
+
+// func TestWatchEvents - Will test the dir watch functionality, ensuring that all desired events are captured and handled and others are ignored
+//					 	  Should be able to handle errors and race conditions
+
+// func TestFiloSync  -   Will perform the sync after events have been triggered. This should be able to determine the differences between dirs and create, rename, remove etc
+// 

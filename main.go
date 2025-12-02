@@ -11,8 +11,9 @@ import (
 )
 
 func main() {
+
 	if util.Cfg.LogLevel == "debug" {
-		log.Println("Starting FILO...")
+		util.Flogger.Println("Starting FILO...")
 	}
 
 	util.PrintBanner()
@@ -27,12 +28,12 @@ func main() {
 
 	targetUsage, err := disk.Usage(util.Cfg.TargetDir)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalln(err, util.Cfg.TargetDir)
 	}
 
 	srcUsage, err := disk.Usage(util.Cfg.SourceDir)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalln(err, util.Cfg.SourceDir)
 	}
 
 	util.PrintConfig(util.Cfg, srcUsage, targetUsage)
@@ -46,7 +47,7 @@ func main() {
 		log.Println("Elapsed:", time.Since(rn))
 	})
 
-	log.Println(missing)
+	util.Flogger.Println(missing) 
 	targetTree.CopyMissing(missing)
 
 	watcher, err := fsnotify.NewWatcher()
@@ -70,6 +71,11 @@ func main() {
 			if !ok {
 				return
 			}
+			
+			if !util.IsAppovedPath(event.Name){
+				continue
+			}
+
 			switch event.Op {
 			case fsnotify.Create:
 				log.Println(util.CreateColor(event.Op), event.Name)

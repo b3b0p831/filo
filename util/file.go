@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -33,55 +32,73 @@ func BuildTree(rootPath string) *FileTree {
 	ft := &FileTree{Index: make(map[string]*FileNode), Root: &FileNode{Path: rootPath}}
 
 	filepath.WalkDir(ft.Root.Path, func(path string, d fs.DirEntry, err error) error {
-
 		switch {
-		case err != nil && rootPath == path:
+		//Nothing to walk
+		case err != nil && path == rootPath:
 			ft = nil
-			log.Println("ROOT", err)
+			Flogger.Println("ROOT", err)
 			return filepath.SkipAll
+
 		case err != nil:
-			log.Println(err)
+			Flogger.Println(err)
 			return filepath.SkipDir
 		}
 
-		currentNode := ft.Index[path]
-		if currentNode == nil {
+		if IsAppovedPath(path) {
 
-			if path == rootPath {
-				currentNode = ft.Root
-			} else {
-				currentNode = &FileNode{}
-				ft.Index[path] = currentNode
-			}
-		}
-
-		currentNode.Path = path
-		currentNode.Entry = d
-
-		if currentNode.Entry.IsDir() {
-			entries, err := os.ReadDir(path)
-			if err != nil {
-				log.Println(err)
-				return filepath.SkipDir
+			currentNode := ft.Index[path]
+			if currentNode == nil {
+				if path == rootPath {
+					currentNode = ft.Root
+				} else {
+					currentNode = &FileNode{}
+					ft.Index[path] = currentNode
+				}
 			}
 
-			currentNode.Children = make([]*FileNode, 0)
-			for _, e := range entries {
-				childNode := &FileNode{Path: filepath.Join(path, e.Name()), Entry: e, Parent: currentNode, Children: make([]*FileNode, 0)}
-				currentNode.Children = append(currentNode.Children, childNode)
-				ft.Index[childNode.Path] = childNode
-			}
+			currentNode.Path = path
+			currentNode.Entry = d
 
-			// You can get with this, or you can get with that
-			slices.SortFunc(currentNode.Children, func(this, that *FileNode) int {
-				return strings.Compare(this.Entry.Name(), that.Entry.Name())
-			})
+			if currentNode.Entry.IsDir() {
+				entries, err := os.ReadDir(path)
+				if err != nil {
+					Flogger.Println(err)
+					return filepath.SkipDir
+				}
+
+				currentNode.Children = make([]*FileNode, 0)
+				for _, e := range entries {
+					if IsAppovedPath(e.Name()) {
+						childNode := &FileNode{Path: filepath.Join(path, e.Name()), Entry: e, Parent: currentNode, Children: make([]*FileNode, 0)}
+						currentNode.Children = append(currentNode.Children, childNode)
+						ft.Index[childNode.Path] = childNode
+					}
+				}
+
+				// You can get with this, or you can get with that
+				slices.SortFunc(currentNode.Children, func(this, that *FileNode) int {
+					return strings.Compare(this.Entry.Name(), that.Entry.Name())
+				})
+			}
+		}else if Cfg.LogLevel == "debug"{
+			Flogger.Println("Unapproved file: ", path)
 		}
 
 		return nil
 	})
 
 	return ft
+}
+
+func IsAppovedPath(path string) bool {
+
+	fileName := filepath.Base(path)
+
+	if fileName == "" || fileName[0] == '.' {
+		return false
+	}
+
+	return true
 }
 
 // Returns true wether or not 2 filenodes are the same
@@ -97,14 +114,14 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 	const bufSize = 4 << 10 //128 MiB
 	initSrcFileInfo, err := srcFileNode.Entry.Info()
 	if err != nil {
-		log.Println(err)
+		Flogger.Println(err)
 		return false, err
 	}
 
 	initTgtFileInfo, err := tgtFileNode.Entry.Info()
 
 	if err != nil {
-		log.Println(err)
+		Flogger.Println(err)
 		return false, err
 	}
 
@@ -171,14 +188,14 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 		currentSrcFileInfo, err := srcFileNode.Entry.Info()
 
 		if err != nil {
-			log.Println(err)
+			Flogger.Println(err)
 			return false, err
 		}
 
 		currentTgtFileInfo, err := tgtFileNode.Entry.Info()
 
 		if err != nil {
-			log.Println(err)
+			Flogger.Println(err)
 			return false, err
 		}
 		srcFile.Close()
@@ -194,7 +211,7 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 
 		return true, nil
 	}
-	log.Printf("Attempted to compare %v with %v, changes detected. Comparison failed.", srcFileNode, tgtFileNode)
+	Flogger.Printf("Attempted to compare %v with %v, changes detected. Comparison failed.", srcFileNode, tgtFileNode)
 	return false, nil
 }
 
@@ -215,7 +232,7 @@ func walkMissingIn(sourceRoot, targetRoot *FileNode, missingNodes map[string][]*
 			for _, tgtNode := range targetRoot.Children {
 				if tgtNode.Entry.Name() == srcChildNode.Entry.Name() && tgtNode.Entry.IsDir() == srcChildNode.Entry.IsDir() {
 					if tgtNode.Entry.IsDir() {
-						log.Println("COMPARE", srcChildNode.Path, "<->", tgtNode.Path)
+						Flogger.Println("COMPARE", srcChildNode.Path, "<->", tgtNode.Path)
 						//TODO: add wait group for walkMissing routines(fork-join?)
 						walkMissingIn(srcChildNode, tgtNode, missingNodes, wg)
 
@@ -224,15 +241,19 @@ func walkMissingIn(sourceRoot, targetRoot *FileNode, missingNodes map[string][]*
 					} else {
 						sameFilesB, err := compareFileNodes(srcChildNode, tgtNode)
 						if err != nil {
-							log.Println(err)
+							Flogger.Println(err)
 						}
 						didContain = sameFilesB
+					}
+
+					if Cfg.LogLevel == "debug" && !didContain && tgtNode.Entry.Name() == srcChildNode.Entry.Name() {
+						Flogger.Println(targetRoot.Path, "!=", srcChildNode.Entry.Name())
 					}
 				}
 			}
 
 			if !didContain {
-				//log.Println(targetRoot.Path, "!=", child.Entry.Name())
+
 				fp := filepath.Join(targetRoot.Path)
 
 				Mu.Lock()
@@ -272,14 +293,14 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 				tgtNode := targetRoot.Children[tgtNodeIdx]
 				if tgtNode.Entry.IsDir() == srcChildNode.Entry.IsDir() {
 					if tgtNode.Entry.IsDir() {
-						log.Println("COMPARE", srcChildNode.Path, "<->", tgtNode.Path)
+						Flogger.Println("COMPARE", srcChildNode.Path, "<->", tgtNode.Path)
 
-						walkMissingIn(srcChildNode, tgtNode, missingNodes, wg)
+						walkMissingInBinary(srcChildNode, tgtNode, missingNodes, wg)
 						didContain = true
 					} else {
 						sameFilesB, err := compareFileNodes(srcChildNode, tgtNode)
 						if err != nil {
-							log.Println(err)
+							Flogger.Println(err)
 						}
 						didContain = sameFilesB
 					}
@@ -287,7 +308,7 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 			}
 
 			if !didContain {
-				//log.Println(targetRoot.Path, "!=", child.Entry.Name())
+				//Flogger.Println(targetRoot.Path, "!=", child.Entry.Name())
 				fp := filepath.Join(targetRoot.Path)
 
 				Mu.Lock()
@@ -319,7 +340,7 @@ func copyChildren(rootPath string, children []*FileNode) {
 	for _, cc := range children {
 		srcFilePath := filepath.Join(cc.Parent.Path, cc.Entry.Name())
 		tgtTmpPath := filepath.Join(rootPath, cc.Entry.Name())
-		log.Println(srcFilePath, "->", tgtTmpPath)
+		Flogger.Println(srcFilePath, "->", tgtTmpPath)
 	}
 }
 
