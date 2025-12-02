@@ -1,9 +1,13 @@
 package testing
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"os/exec"
 
 	"bebop831.com/filo/util"
 )
@@ -17,7 +21,7 @@ type BuildTreeTest struct {
 }
 
 var (
-	test_root = "/Users/bebop831/Dev/filo_tests/"
+	test_root = "/home/bebop831/Dev/filo_tests/"
 )
 
 var buildTreeTests = []BuildTreeTest{
@@ -37,9 +41,9 @@ var buildTreeTests = []BuildTreeTest{
 		},
 	},
 	{
-		name:      "Large Library",
-		path:      "/Users/bebop831/Dev/serv",
-		wantNodes: 5, //Shoud be len(tree.Index) - 1
+		name:      "large_library",
+		path:      filepath.Join(test_root, "large_library"),
+		wantNodes: 6341, //Shoud be len(tree.Index) - 1
 		check: func(t *testing.T, tree *util.FileTree) {
 
 			for k, v := range tree.Index {
@@ -59,7 +63,7 @@ var buildTreeTests = []BuildTreeTest{
 	{
 		name:      "should_pass",
 		path:      filepath.Join(test_root, "should_pass"),
-		wantNodes: 12, //Shoud be len(tree.Index) - 1
+		wantNodes: 0, //Shoud be len(tree.Index) - 1
 		check: func(t *testing.T, tree *util.FileTree) {
 
 			for k, v := range tree.Index {
@@ -67,7 +71,6 @@ var buildTreeTests = []BuildTreeTest{
 					t.Errorf("unapproved file '%s' detected in filetree", k)
 				}
 			}
-
 
 			// file2test := "One.Battle.After.Another.2025.1080p.WEBRip.10Bit.DDP5.1.x265-NeoNoir.mkv"
 			// file1Path := filepath.Join("/Users/bebop831/Dev/serv/movies", file2test)
@@ -77,10 +80,10 @@ var buildTreeTests = []BuildTreeTest{
 
 		},
 	},
-		{
+	{
 		name:      "hackerman",
 		path:      filepath.Join(test_root, "hackerman"),
-		wantNodes: 6357, //Shoud be len(tree.Index) - 1
+		wantNodes: 6341, //Shoud be len(tree.Index) - 1
 		check: func(t *testing.T, tree *util.FileTree) {
 
 			for k, v := range tree.Index {
@@ -88,14 +91,7 @@ var buildTreeTests = []BuildTreeTest{
 					t.Errorf("unapproved file '%s' detected in filetree", k)
 				}
 			}
-
-
-			// file2test := "One.Battle.After.Another.2025.1080p.WEBRip.10Bit.DDP5.1.x265-NeoNoir.mkv"
-			// file1Path := filepath.Join("/Users/bebop831/Dev/serv/movies", file2test)
-			// if _, ok := tree.Index[file1Path]; !ok {
-			// 	t.Errorf("expected %s in index", file1Path)
-			// }
-
+			contentsCheck(filepath.Join(test_root, "hackerman"), tree.Index)
 		},
 	},
 }
@@ -177,6 +173,11 @@ func TestBuildTree(t *testing.T) {
 					t.Errorf("expected %d nodes, got %d", tt.wantNodes, got)
 				}
 			}
+
+			if !contentsCheck(tt.path, tree.Index) {
+				t.Errorf("failed contents check for %s", tt.path)
+			}
+
 			if tt.check != nil && tree != nil {
 				tt.check(t, tree)
 			}
@@ -184,8 +185,34 @@ func TestBuildTree(t *testing.T) {
 	}
 }
 
+// This func runs tree command on targetPath, and checks each file exists in Index
+func contentsCheck(targetRoot string, treeIndex map[string]*util.FileNode) bool {
+	// Define the command and its arguments
+	cmd := exec.Command("tree", "-i", "-f", targetRoot)
+
+	// Execute the command and capture its combined output (stdout and stderr)
+	output, err := cmd.CombinedOutput()
+	lines := strings.Split(string(output), "\n")
+	if err != nil {
+		return false
+	}
+
+	lines = lines[1:]            // Strip first line from tree output
+	lines = lines[:len(lines)-3] // Strip last 2 lines
+
+	lines = append(lines, "hola")
+	for _, line := range lines {
+		if _, ok := treeIndex[line]; !ok {
+			fmt.Printf("expected %s in %s\n", line, targetRoot)
+			return false
+		}
+	}
+
+	return true
+}
+
 // func TestWatchEvents - Will test the dir watch functionality, ensuring that all desired events are captured and handled and others are ignored
 //					 	  Should be able to handle errors and race conditions
 
 // func TestFiloSync  -   Will perform the sync after events have been triggered. This should be able to determine the differences between dirs and create, rename, remove etc
-// 
+//

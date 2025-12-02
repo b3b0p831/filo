@@ -80,7 +80,7 @@ func BuildTree(rootPath string) *FileTree {
 					return strings.Compare(this.Entry.Name(), that.Entry.Name())
 				})
 			}
-		}else if Cfg.LogLevel == "debug"{
+		} else if Cfg.LogLevel == "debug" {
 			Flogger.Println("Unapproved file: ", path)
 		}
 
@@ -222,10 +222,6 @@ func walkMissingIn(sourceRoot, targetRoot *FileNode, missingNodes map[string][]*
 	}
 
 	for _, srcChildNode := range sourceRoot.Children {
-		//ignore files that start with "."
-		if strings.HasPrefix(srcChildNode.Entry.Name(), ".") {
-			continue
-		}
 		wg.Go(func() {
 
 			didContain := false
