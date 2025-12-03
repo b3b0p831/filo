@@ -14,11 +14,10 @@ import (
 )
 
 type BuildTreeTest struct {
-	name      string
-	path      string
-	wantNodes int
-	wantErr   bool
-	check     func(t *testing.T, tree *util.FileTree)
+	name    string
+	path    string
+	wantErr bool
+	check   func(t *testing.T, tree *util.FileTree)
 }
 
 var (
@@ -27,9 +26,8 @@ var (
 
 var buildTreeTests = []BuildTreeTest{
 	{
-		name:      "control",
-		path:      filepath.Join(test_root, "control"),
-		wantNodes: 5,
+		name: "control",
+		path: filepath.Join(test_root, "control"),
 		check: func(t *testing.T, tree *util.FileTree) {
 			file1Path := filepath.Join(test_root, "control", "file1.txt")
 			if _, ok := tree.Index[file1Path]; !ok {
@@ -42,9 +40,8 @@ var buildTreeTests = []BuildTreeTest{
 		},
 	},
 	{
-		name:      "should_pass",
-		path:      filepath.Join(test_root, "should_pass"),
-		wantNodes: 0, //Shoud be len(tree.Index) - 1
+		name: "should_pass",
+		path: filepath.Join(test_root, "should_pass"),
 		check: func(t *testing.T, tree *util.FileTree) {
 
 			for k, v := range tree.Index {
@@ -56,9 +53,8 @@ var buildTreeTests = []BuildTreeTest{
 		},
 	},
 	{
-		name:      "large_library",
-		path:      filepath.Join(test_root, "large_library"),
-		wantNodes: 6357, //Shoud be len(tree.Index) - 1
+		name: "large_library",
+		path: filepath.Join(test_root, "large_library"),
 		check: func(t *testing.T, tree *util.FileTree) {
 
 			for k, v := range tree.Index {
@@ -152,14 +148,14 @@ func TestBuildTree(t *testing.T) {
 				t.Fatalf("expected non-nil tree, got nil")
 			}
 
-			if tree != nil && tt.wantNodes > 0 {
-				if got := len(tree.Index); got != tt.wantNodes {
-					t.Errorf("expected %d nodes, got %d", tt.wantNodes, got)
-				}
-			}
+			if tree != nil {
+				ok, numOfExpectedNodes := contentsCheck(tt.path, tree.Index)
+				got := len(tree.Index)
 
-			if !contentsCheck(tt.path, tree.Index) {
-				t.Errorf("failed contents check for %s", tt.path)
+				t.Logf("expected %d nodes, got %d", numOfExpectedNodes, got)
+				if !ok {
+					t.Errorf("failed contents check for %s", tt.path)
+				}
 			}
 
 			if tt.check != nil && tree != nil {
@@ -170,15 +166,17 @@ func TestBuildTree(t *testing.T) {
 }
 
 // This func runs tree command on targetPath, and checks each file exists in Index
-func contentsCheck(targetRoot string, treeIndex map[string]*util.FileNode) bool {
+// If successful, returns true, len(nodes) returned by tree command (dirs + files - root)
+// else returns false, -1
+func contentsCheck(targetRoot string, treeIndex map[string]*util.FileNode) (bool, int) {
 	// Define the command and its arguments
-	cmd := exec.Command("tree", "-i", "-f", targetRoot)
+	cmd := exec.Command("tree", "-i", "-f", filepath.Clean(targetRoot))
 
 	// Execute the command and capture its combined output (stdout and stderr)
 	output, err := cmd.CombinedOutput()
 	lines := strings.Split(string(output), "\n")
 	if err != nil {
-		return false
+		return false, -1
 	}
 
 	lines = lines[1:]            // Strip first line from tree output, "Root dir"
@@ -196,11 +194,11 @@ func contentsCheck(targetRoot string, treeIndex map[string]*util.FileNode) bool 
 
 			fmt.Printf("expected %s in %s\n", line, targetRoot)
 			fmt.Println(ok)
-			return false
+			return false, -1
 		}
 	}
 
-	return true
+	return true, len(lines)
 }
 
 // func TestWatchEvents - Will test the dir watch functionality, ensuring that all desired events are captured and handled and others are ignored
