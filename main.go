@@ -47,7 +47,7 @@ func main() {
 		log.Println("Elapsed:", time.Since(rn))
 	})
 
-	util.Flogger.Println(missing) 
+	util.Flogger.Println(missing)
 	targetTree.CopyMissing(missing)
 
 	watcher, err := fsnotify.NewWatcher()
@@ -71,8 +71,8 @@ func main() {
 			if !ok {
 				return
 			}
-			
-			if !util.IsAppovedPath(event.Name){
+
+			if !util.IsApprovedPath(event.Name) {
 				continue
 			}
 

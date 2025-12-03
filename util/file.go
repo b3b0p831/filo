@@ -44,7 +44,7 @@ func BuildTree(rootPath string) *FileTree {
 			return filepath.SkipDir
 		}
 
-		if IsAppovedPath(d.Name()) {
+		if IsApprovedPath(d.Name()) {
 
 			currentNode := ft.Index[path]
 			if currentNode == nil {
@@ -68,7 +68,7 @@ func BuildTree(rootPath string) *FileTree {
 
 				currentNode.Children = make([]*FileNode, 0)
 				for _, e := range entries {
-					if IsAppovedPath(e.Name()) {
+					if IsApprovedPath(e.Name()) {
 						childNode := &FileNode{Path: filepath.Join(path, e.Name()), Entry: e, Parent: currentNode, Children: make([]*FileNode, 0)}
 						currentNode.Children = append(currentNode.Children, childNode)
 						ft.Index[childNode.Path] = childNode
@@ -82,7 +82,7 @@ func BuildTree(rootPath string) *FileTree {
 			}
 		} else if d.IsDir() {
 			if Cfg.LogLevel == "debug" {
-				Flogger.Println("Unapproved file: ", path)
+				Flogger.Println("Unapproved directory: ", path)
 			}
 			return filepath.SkipDir
 		}
@@ -93,7 +93,7 @@ func BuildTree(rootPath string) *FileTree {
 	return ft
 }
 
-func IsAppovedPath(path string) bool {
+func IsApprovedPath(path string) bool {
 
 	cleanedFilePath := filepath.Clean(path)
 	fileName := filepath.Base(cleanedFilePath)
@@ -306,7 +306,7 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 
 			if !didContain {
 				//Flogger.Println(targetRoot.Path, "!=", child.Entry.Name())
-				fp := filepath.Join(targetRoot.Path)
+				fp := filepath.Clean(targetRoot.Path)
 
 				Mu.Lock()
 				tmpChildren := missingNodes[fp]

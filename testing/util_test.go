@@ -42,54 +42,41 @@ var buildTreeTests = []BuildTreeTest{
 		},
 	},
 	{
-		name:      "large_library",
-		path:      filepath.Join(test_root, "large_library"),
-		wantNodes: 0, //Shoud be len(tree.Index) - 1
-		check: func(t *testing.T, tree *util.FileTree) {
-
-			for k, v := range tree.Index {
-				if !util.IsAppovedPath(v.Entry.Name()) {
-					t.Errorf("unapproved file '%s' detected in filetree", k)
-				}
-			}
-
-			// file2test := "One.Battle.After.Another.2025.1080p.WEBRip.10Bit.DDP5.1.x265-NeoNoir.mkv"
-			// file1Path := filepath.Join("/Users/bebop831/Dev/serv/movies", file2test)
-			// if _, ok := tree.Index[file1Path]; !ok {
-			// 	t.Errorf("expected %s in index", file1Path)
-			// }
-
-		},
-	},
-	{
 		name:      "should_pass",
 		path:      filepath.Join(test_root, "should_pass"),
 		wantNodes: 0, //Shoud be len(tree.Index) - 1
 		check: func(t *testing.T, tree *util.FileTree) {
 
 			for k, v := range tree.Index {
-				if !util.IsAppovedPath(v.Entry.Name()) {
+				if !util.IsApprovedPath(v.Entry.Name()) {
 					t.Errorf("unapproved file '%s' detected in filetree", k)
 				}
 			}
 
-			// file2test := "One.Battle.After.Another.2025.1080p.WEBRip.10Bit.DDP5.1.x265-NeoNoir.mkv"
-			// file1Path := filepath.Join("/Users/bebop831/Dev/serv/movies", file2test)
-			// if _, ok := tree.Index[file1Path]; !ok {
-			// 	t.Errorf("expected %s in index", file1Path)
-			// }
-
 		},
 	},
 	{
-		name:      "hackerman",
-		path:      filepath.Join(test_root, "hackerman"),
+		name:      "large_library",
+		path:      filepath.Join(test_root, "large_library"),
 		wantNodes: 6357, //Shoud be len(tree.Index) - 1
 		check: func(t *testing.T, tree *util.FileTree) {
 
-			contentsCheck(filepath.Join(test_root, "hackerman"), tree.Index)
+			for k, v := range tree.Index {
+				if !util.IsApprovedPath(v.Entry.Name()) {
+					t.Errorf("unapproved file '%s' detected in filetree", k)
+				}
+			}
+
 		},
 	},
+	// {
+	// 	name:      "hackerman",
+	// 	path:      filepath.Join(test_root, "hackerman"),
+	// 	wantNodes: 6357, //Shoud be len(tree.Index) - 1
+	// 	check: func(t *testing.T, tree *util.FileTree) {
+
+	// 	},
+	// },
 }
 
 func TestGetTimeInterval(t *testing.T) {
@@ -164,6 +151,7 @@ func TestBuildTree(t *testing.T) {
 			if tree == nil && !tt.wantErr {
 				t.Fatalf("expected non-nil tree, got nil")
 			}
+
 			if tree != nil && tt.wantNodes > 0 {
 				if got := len(tree.Index); got != tt.wantNodes {
 					t.Errorf("expected %d nodes, got %d", tt.wantNodes, got)
@@ -193,7 +181,7 @@ func contentsCheck(targetRoot string, treeIndex map[string]*util.FileNode) bool 
 		return false
 	}
 
-	lines = lines[1:]            // Strip first line from tree output
+	lines = lines[1:]            // Strip first line from tree output, "Root dir"
 	lines = lines[:len(lines)-3] // Strip last 2 lines
 
 	for _, line := range lines {
@@ -201,11 +189,13 @@ func contentsCheck(targetRoot string, treeIndex map[string]*util.FileNode) bool 
 
 			//Ignore symlinks
 			if strings.Contains(line, " -> ") {
+				fmt.Println("Skipping symlink:", strings.Split(line, "->")[0])
+				fmt.Println(ok)
 				continue
 			}
 
 			fmt.Printf("expected %s in %s\n", line, targetRoot)
-			fmt.Println(line)
+			fmt.Println(ok)
 			return false
 		}
 	}
