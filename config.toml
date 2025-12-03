@@ -1,5 +1,5 @@
 source_dir = "/home/bebop831/Dev/serv"
 target_dir = "/home/bebop831/Dev/filo_target"
 max_fill = 0.95
-log_level = "info"
+log_level = "debug"
 sync_delay = "5s"

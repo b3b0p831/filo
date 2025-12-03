@@ -44,7 +44,7 @@ func BuildTree(rootPath string) *FileTree {
 			return filepath.SkipDir
 		}
 
-		if IsAppovedPath(path) {
+		if IsAppovedPath(d.Name()) {
 
 			currentNode := ft.Index[path]
 			if currentNode == nil {
@@ -80,8 +80,11 @@ func BuildTree(rootPath string) *FileTree {
 					return strings.Compare(this.Entry.Name(), that.Entry.Name())
 				})
 			}
-		} else if Cfg.LogLevel == "debug" {
-			Flogger.Println("Unapproved file: ", path)
+		} else if d.IsDir() {
+			if Cfg.LogLevel == "debug" {
+				Flogger.Println("Unapproved file: ", path)
+			}
+			return filepath.SkipDir
 		}
 
 		return nil
@@ -92,7 +95,8 @@ func BuildTree(rootPath string) *FileTree {
 
 func IsAppovedPath(path string) bool {
 
-	fileName := filepath.Base(path)
+	cleanedFilePath := filepath.Clean(path)
+	fileName := filepath.Base(cleanedFilePath)
 
 	if fileName == "" || fileName[0] == '.' {
 		return false
@@ -268,10 +272,7 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 	}
 
 	for _, srcChildNode := range sourceRoot.Children {
-		//ignore files that start with "."
-		if strings.HasPrefix(srcChildNode.Entry.Name(), ".") {
-			continue
-		}
+
 		wg.Go(func() {
 
 			didContain := false
