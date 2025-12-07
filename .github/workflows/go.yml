@@ -11,8 +11,12 @@ on:
 
 jobs:
 
+  
   build:
-    runs-on: self-hosted
+    strategy:
+      matrix:
+        os: [self-hosted]
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
 
