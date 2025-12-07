@@ -44,7 +44,7 @@ func BuildTree(rootPath string) *FileTree {
 			return filepath.SkipDir
 		}
 
-		if IsApprovedPath(d.Name()) {
+		if IsApprovedPath(path) {
 
 			currentNode := ft.Index[path]
 			if currentNode == nil {
@@ -68,8 +68,9 @@ func BuildTree(rootPath string) *FileTree {
 
 				currentNode.Children = make([]*FileNode, 0)
 				for _, e := range entries {
-					if IsApprovedPath(e.Name()) {
-						childNode := &FileNode{Path: filepath.Join(path, e.Name()), Entry: e, Parent: currentNode, Children: make([]*FileNode, 0)}
+					possiblePath := filepath.Join(path, e.Name())
+					if IsApprovedPath(possiblePath) {
+						childNode := &FileNode{Path: possiblePath, Entry: e, Parent: currentNode, Children: make([]*FileNode, 0)}
 						currentNode.Children = append(currentNode.Children, childNode)
 						ft.Index[childNode.Path] = childNode
 					}
@@ -96,9 +97,14 @@ func BuildTree(rootPath string) *FileTree {
 func IsApprovedPath(path string) bool {
 
 	cleanedFilePath := filepath.Clean(path)
-	fileName := filepath.Base(cleanedFilePath)
+	isHidden, err := IsHiddenFile(cleanedFilePath)
 
-	if fileName == "" || fileName[0] == '.' {
+	if err != nil {
+		fmt.Println("FILE APPROVE ERROR:", err, path)
+		return false
+	}
+
+	if path == "" || isHidden {
 		return false
 	}
 
