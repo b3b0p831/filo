@@ -10,12 +10,10 @@ on:
     branches: [ "main" ]
 
 jobs:
-
-  
   build:
     strategy:
       matrix:
-        os: [self-hosted]
+        os: [windows-self-hosted, linux-self-hosted]
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
