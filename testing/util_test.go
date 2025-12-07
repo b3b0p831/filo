@@ -22,38 +22,44 @@ type BuildTreeTest struct {
 }
 
 var (
-	test_root = filepath.Join(os.Getenv("HOME"), "Dev/filo_tests")
-	//test_root = "C:\\Users\\bob\\Dev\\filo_tests"
+	userHome       string
+	test_root      string
+	buildTreeTests []BuildTreeTest
 )
 
-var buildTreeTests = []BuildTreeTest{
-	// {
-	// 	name: "control",
-	// 	path: filepath.Join(test_root, "control"),
-	// 	check: func(t *testing.T, tree *util.FileTree) {
-	// 		filePaths := []string{filepath.Join(test_root, "control", "file1.txt")}
-	// 		for _, fp := range filePaths {
-	// 			if _, ok := tree.Index[fp]; !ok {
-	// 				t.Errorf("expected %s in index", fp)
-	// 			}
-	// 		}
-	// 	},
-	// },
-	// {
-	// 	name:  "should_pass",
-	// 	path:  filepath.Join(test_root, "should_pass"),
-	// 	check: nil,
-	// },
-	// {
-	// 	name:  "large_library",
-	// 	path:  filepath.Join(test_root, "../large_library"),
-	// 	check: nil,
-	// },
-	{
-		name:  "hackerman",
-		path:  "/Users/bebop831/Dev/filo_tests/../../../../etc",
-		check: nil,
-	},
+func init() {
+	var err error
+	userHome, err = os.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+
+	test_root = filepath.Join(userHome, "Dev", "filo_tests")
+	buildTreeTests = []BuildTreeTest{
+		{
+			name: "control",
+			path: filepath.Join(test_root, "control"),
+			check: func(t *testing.T, tree *util.FileTree) {
+				filePaths := []string{filepath.Join(test_root, "control", "file1.txt")}
+				for _, fp := range filePaths {
+					if _, ok := tree.Index[fp]; !ok {
+						t.Errorf("expected %s in index", fp)
+					}
+				}
+			},
+		},
+		{
+			name:  "large_library",
+			path:  filepath.Join(test_root, "large_library"),
+			check: nil,
+		},
+		{
+			name:    "empty",
+			path:    filepath.Join(test_root, "empty"),
+			check:   nil,
+			wantErr: true,
+		},
+	}
 }
 
 func TestGetTimeInterval(t *testing.T) {
@@ -126,7 +132,7 @@ func TestBuildTree(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tree := util.BuildTree(tt.path)
 			if tree == nil && !tt.wantErr {
-				t.Fatalf("expected non-nil tree, got nil")
+				t.Fatalf("expected non-nil tree, got nil on %s", tt.path)
 			}
 
 			if tree != nil {
