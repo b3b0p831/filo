@@ -11,7 +11,9 @@ import (
 
 	"os/exec"
 
+	"bebop831.com/filo/config"
 	"bebop831.com/filo/util"
+	"github.com/BurntSushi/toml"
 )
 
 type BuildTreeTest struct {
@@ -125,6 +127,18 @@ func TestGetTimeInterval(t *testing.T) {
 			t.Errorf("util.GetTimeInterval(%s) != %v\n", timeStr, expectedTimeVal)
 		}
 	}
+}
+
+func TestTOMLConfig(t *testing.T) {
+	var cfgTest config.Config
+	_, err := toml.DecodeFile("config.toml", &cfgTest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Log(cfgTest)
+	t.Log(util.Cfg)
+
 }
 
 func TestBuildTree(t *testing.T) {
