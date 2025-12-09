@@ -13,7 +13,7 @@ type Config struct {
 	ApprovedExtensions []string `mapstructure:"approved_extensions"`
 }
 
-func (cfg Config) Equal(otherCFG Config) bool {
+func (cfg *Config) Equal(otherCFG Config) bool {
 
 	return cfg.TargetDir == otherCFG.TargetDir && cfg.SourceDir == otherCFG.SourceDir &&
 		cfg.MaxFill == otherCFG.MaxFill && cfg.SyncDelay == otherCFG.SyncDelay && slices.Equal(cfg.ApprovedExtensions, otherCFG.ApprovedExtensions)
