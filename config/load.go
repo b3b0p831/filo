@@ -3,6 +3,7 @@ package config
 
 import (
 	"log"
+
 	"github.com/spf13/viper"
 )
 
@@ -18,12 +19,8 @@ func Load() *Config {
 	v.SetConfigName("config") // without extension
 	v.SetConfigType("toml")
 
-	// Standard cross-platform config locations
-	// if dir, err := os.UserConfigDir(); err == nil {
-	// 	v.AddConfigPath(filepath.Join(dir, "mediasync"))
-	// }
 	v.AddConfigPath("/etc/filo/filo.conf") // fallback: current dir
-	v.AddConfigPath(".") // fallback: current dir
+	v.AddConfigPath(".")                   // fallback: current dir
 
 	// Read config
 	if err := v.ReadInConfig(); err != nil {

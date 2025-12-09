@@ -129,15 +129,22 @@ func TestGetTimeInterval(t *testing.T) {
 	}
 }
 
-func TestTOMLConfig(t *testing.T) {
+func TestTOMLParse(t *testing.T) {
+	tomlFN := "config.toml"
 	var cfgTest config.Config
-	_, err := toml.DecodeFile("config.toml", &cfgTest)
+	_, err := toml.DecodeFile(tomlFN, &cfgTest)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Log(cfgTest)
 	t.Log(util.Cfg)
+
+	if !util.Cfg.Equal(cfgTest) {
+		t.Error("mismatch configs")
+	} else {
+		t.Logf("%s was successfully parsed", tomlFN)
+	}
 
 }
 

@@ -1,5 +1,7 @@
 package config
 
+import "slices"
+
 // in-memory representation of the config.toml file.
 
 type Config struct {
@@ -9,4 +11,10 @@ type Config struct {
 	LogLevel           string   `mapstructure:"log_level"`
 	SyncDelay          string   `mapstructure:"sync_delay"`
 	ApprovedExtensions []string `mapstructure:"approved_extensions"`
+}
+
+func (cfg Config) Equal(otherCFG Config) bool {
+
+	return cfg.TargetDir == otherCFG.TargetDir && cfg.SourceDir == otherCFG.SourceDir &&
+		cfg.MaxFill == cfg.MaxFill && cfg.SyncDelay == otherCFG.SyncDelay && slices.Equal(cfg.ApprovedExtensions, otherCFG.ApprovedExtensions)
 }

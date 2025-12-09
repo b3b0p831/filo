@@ -3,14 +3,13 @@ package util
 import (
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"regexp"
 	"strconv"
 	"sync"
-	"time"
 	"syscall"
-	"os"
-	"os/signal"
-
+	"time"
 
 	"bebop831.com/filo/config"
 
@@ -27,7 +26,7 @@ var Flogger *log.Logger
 func init() {
 	Cfg = config.Load()
 	Mu = &sync.Mutex{}
-	Flogger = log.New(os.Stdin, "", log.Ltime | log.Lshortfile)
+	Flogger = log.New(os.Stdin, "", log.Ltime|log.Lshortfile)
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -54,6 +53,7 @@ func PrintBanner() {
 	fmt.Println(white("         ") + yellow("先入後出 同期"))
 	fmt.Println()
 }
+
 // ============================
 
 const (
