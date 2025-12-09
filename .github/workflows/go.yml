@@ -10,9 +10,11 @@ on:
     branches: [ "main" ]
 
 jobs:
-
   build:
-    runs-on: self-hosted
+    strategy:
+      matrix:
+        os: [windows-self-hosted, linux-self-hosted]
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
 
@@ -24,5 +26,8 @@ jobs:
     - name: Build
       run: go build -v ./...
 
+    - name: Clear Cache
+      run: go clean -testcache
+      
     - name: Test
       run: go test -v ./testing
