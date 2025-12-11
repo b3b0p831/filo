@@ -2,57 +2,67 @@ package main
 
 import (
 	"log"
+	"sync"
 	"time"
 
-	"bebop831.com/filo/util"
-	"github.com/fsnotify/fsnotify"
+	"bebop831.com/filo/internal/config"
+	"bebop831.com/filo/internal/fs"
+	"bebop831.com/filo/internal/util"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/shirou/gopsutil/v4/disk"
 )
 
+var Cfg *config.Config = config.Load()
+var Mu *sync.Mutex
+
+func init() {
+	Mu = &sync.Mutex{}
+}
+
 func main() {
 
-	if util.Cfg.LogLevel == "debug" {
-		util.Flogger.Println("Starting FILO...")
+	if Cfg.LogLevel == "debug" {
+		Cfg.Flogger.Println("Starting FILO...")
 	}
 
 	util.PrintBanner()
 
-	if len(util.Cfg.SourceDir) == 0 {
-		log.Fatalln("Invalid source dir.")
+	if len(Cfg.SourceDir) == 0 {
+		Cfg.Flogger.Fatalln("Invalid source dir.")
 	}
 
-	if len(util.Cfg.TargetDir) == 0 {
-		log.Fatalln("Invalid target dir.")
+	if len(Cfg.TargetDir) == 0 {
+		Cfg.Flogger.Fatalln("Invalid target dir.")
 	}
 
-	targetUsage, err := disk.Usage(util.Cfg.TargetDir)
+	targetUsage, err := disk.Usage(Cfg.TargetDir)
 	if err != nil {
-		log.Fatalln(err, util.Cfg.TargetDir)
+		log.Fatalln(err, Cfg.TargetDir)
 	}
 
-	srcUsage, err := disk.Usage(util.Cfg.SourceDir)
+	srcUsage, err := disk.Usage(Cfg.SourceDir)
 	if err != nil {
-		log.Fatalln(err, util.Cfg.SourceDir)
+		log.Fatalln(err, Cfg.SourceDir)
 	}
 
-	util.PrintConfig(util.Cfg, srcUsage, targetUsage)
-	log.Printf("Starting FILO watch on '%s'...\n", util.Cfg.SourceDir)
+	util.PrintConfig(Cfg, srcUsage, targetUsage)
+	log.Printf("Starting FILO watch on '%s'...\n", Cfg.SourceDir)
 
-	srcTree := util.BuildTree(util.Cfg.SourceDir)
-	targetTree := util.BuildTree(util.Cfg.TargetDir)
+	srcTree := fs.BuildTree(Cfg.SourceDir)
+	targetTree := fs.BuildTree(Cfg.TargetDir)
 
 	rn := time.Now()
-	var missing map[string][]*util.FileNode = srcTree.MissingIn(targetTree, func() {
+	var missing map[string][]*fs.FileNode = srcTree.MissingIn(targetTree, func() {
 		log.Println("Elapsed:", time.Since(rn))
 	})
 
-	util.Flogger.Println(missing)
+	Cfg.Flogger.Println(missing)
 	targetTree.CopyMissing(missing)
 
 	watcher, err := fsnotify.NewWatcher()
-	watcher.Add(util.Cfg.SourceDir)
-	go util.OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: util.Cfg.SourceDir}, watcher)
+	watcher.Add(Cfg.SourceDir)
+	go fs.OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: Cfg.SourceDir}, watcher, Cfg.Flogger)
 
 	if err != nil {
 		log.Fatalln(err)
@@ -62,7 +72,7 @@ func main() {
 	exitChan := make(chan struct{})
 	syncChan := make(chan struct{})
 
-	go util.SyncChanges(eventChan, exitChan, syncChan, util.Cfg)
+	go fs.SyncChanges(eventChan, exitChan, syncChan, Cfg)
 
 	// TODO: Turns this into go routine, go util.WatchChanges
 	for {
@@ -72,14 +82,14 @@ func main() {
 				return
 			}
 
-			if !util.IsApprovedPath(event.Name) {
+			if !fs.IsApprovedPath(event.Name) {
 				continue
 			}
 
 			switch event.Op {
 			case fsnotify.Create:
 				log.Println(util.CreateColor(event.Op), event.Name)
-				go util.OnCreate(&event, watcher)
+				go fs.OnCreate(&event, watcher, Cfg.Flogger)
 
 			case fsnotify.Rename:
 				log.Println(util.RenameColor(event.Op), event.Name)
@@ -91,7 +101,7 @@ func main() {
 				continue
 
 			default:
-				if util.Cfg.LogLevel == "debug" {
+				if Cfg.LogLevel == "debug" {
 					log.Println(event.Op, event.Name)
 				}
 			}
