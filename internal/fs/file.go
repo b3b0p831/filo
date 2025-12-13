@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,10 +16,8 @@ import (
 )
 
 var Mu *sync.Mutex
-var Flogger *log.Logger
 
 func init() {
-	Flogger = log.New(os.Stdin, "", log.Ltime|log.Lshortfile)
 	Mu = &sync.Mutex{}
 }
 
@@ -45,11 +43,11 @@ func BuildTree(rootPath string) *FileTree {
 		//Nothing to walk
 		case err != nil && path == rootPath:
 			ft = nil
-			Flogger.Println("ROOT", err)
+			slog.Error("ROOT " + err.Error())
 			return filepath.SkipAll
 
 		case err != nil:
-			Flogger.Println(err)
+			slog.Error(err.Error())
 			return filepath.SkipDir
 		}
 
@@ -71,7 +69,7 @@ func BuildTree(rootPath string) *FileTree {
 			if currentNode.Entry.IsDir() {
 				entries, err := os.ReadDir(path)
 				if err != nil {
-					Flogger.Println(err)
+					slog.Error(err.Error())
 					return filepath.SkipDir
 				}
 
@@ -91,7 +89,7 @@ func BuildTree(rootPath string) *FileTree {
 				})
 			}
 		} else if d.IsDir() {
-			Flogger.Println("Unapproved directory: ", path)
+			slog.Warn(fmt.Sprint("Unapproved directory: ", path))
 			return filepath.SkipDir
 		}
 
@@ -126,8 +124,8 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 		return false, nil
 	}
 
-	//	const bufSize = 4 << 20 //4 MiB
-	const bufSize = 4 << 10 //128 MiB
+	const bufSize = 4 << 20 //4 MiB
+	//const bufSize = 4 << 10 //4 KiB
 	initSrcFileInfo, err := srcFileNode.Entry.Info()
 	if err != nil {
 		return false, err
@@ -181,12 +179,7 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 			if (srcReadErr != nil && srcReadErr != io.EOF) || (tgtReadErr != nil && tgtReadErr != io.EOF) {
 				srcFile.Close()
 				tgtFile.Close()
-				if srcReadErr != nil && srcReadErr != io.EOF {
-					return false, srcReadErr
-				}
-				if tgtReadErr != nil && tgtReadErr != io.EOF {
-					return false, tgtReadErr
-				}
+				return false, fmt.Errorf("%s %s", srcReadErr, tgtReadErr)
 			}
 
 			if srcBytesRead != tgtBytesRead || !bytes.Equal(srcFileBuf[:srcBytesRead], tgtFileBuf[:tgtBytesRead]) {
@@ -224,7 +217,7 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 		return true, nil
 	}
 
-	return false, fmt.Errorf("Attempted to compare %v with %v, changes detected. Comparison failed.", srcFileNode, tgtFileNode)
+	return false, fmt.Errorf("changes detected while comparing nodes %v with %v", srcFileNode, tgtFileNode)
 }
 
 func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[string][]*FileNode, wg *sync.WaitGroup) {
@@ -252,14 +245,14 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 				tgtNode := targetRoot.Children[tgtNodeIdx]
 				if tgtNode.Entry.IsDir() == srcChildNode.Entry.IsDir() {
 					if tgtNode.Entry.IsDir() {
-						Flogger.Println("COMPARE", srcChildNode.Path, "<->", tgtNode.Path)
+						slog.Info(fmt.Sprint("COMPARE", srcChildNode.Path, "<->", tgtNode.Path))
 
 						walkMissingInBinary(srcChildNode, tgtNode, missingNodes, wg)
 						didContain = true
 					} else {
 						sameFilesB, err := compareFileNodes(srcChildNode, tgtNode)
 						if err != nil {
-							Flogger.Println(err)
+							slog.Info(err.Error())
 						}
 						didContain = sameFilesB
 					}
@@ -299,7 +292,7 @@ func copyChildren(rootPath string, children []*FileNode) {
 	for _, cc := range children {
 		srcFilePath := filepath.Join(cc.Parent.Path, cc.Entry.Name())
 		tgtTmpPath := filepath.Join(rootPath, cc.Entry.Name())
-		fmt.Println(srcFilePath, "->", tgtTmpPath)
+		fmt.Sprintln(srcFilePath, "->", tgtTmpPath)
 	}
 }
 
@@ -314,7 +307,6 @@ func (n *FileNode) String() string {
 	var sb strings.Builder
 
 	sb.WriteString("FileNode\n")
-	//	sb.WriteString(fmt.Sprintf("  Path: %s\n", n.Path))
 
 	if n.Entry != nil {
 		sb.WriteString(fmt.Sprintf("  Entry: %s\n", n.Entry.Name()))

@@ -1,11 +1,14 @@
 package config
 
 import (
+	"io"
 	"log"
+	"log/slog"
 	"os"
 	"slices"
 	"time"
 
+	"github.com/lmittmann/tint"
 	"github.com/spf13/viper"
 )
 
@@ -19,13 +22,19 @@ type Config struct {
 	SyncDelay          time.Duration `mapstructure:"sync_delay"`
 	ApprovedExtensions []string      `mapstructure:"approved_extensions"`
 	LogFile            string        `mapstructure:"log_file"`
-	Flogger            *log.Logger
 }
 
 func (cfg *Config) Equal(otherCFG Config) bool {
 
 	return cfg.TargetDir == otherCFG.TargetDir && cfg.SourceDir == otherCFG.SourceDir &&
 		cfg.MaxFill == otherCFG.MaxFill && cfg.SyncDelay == otherCFG.SyncDelay && slices.Equal(cfg.ApprovedExtensions, otherCFG.ApprovedExtensions)
+}
+
+var debugLevels = map[string]slog.Level{
+	"debug": slog.LevelDebug,
+	"info":  slog.LevelInfo,
+	"warn":  slog.LevelWarn,
+	"error": slog.LevelError,
 }
 
 func Load() *Config {
@@ -54,9 +63,21 @@ func Load() *Config {
 		log.Fatal("failed to read config:", err)
 	}
 
-	// if cfg.LogFile == "" {
-	// }
-	cfg.Flogger = log.New(os.Stdin, "", log.Ltime|log.Lshortfile)
+	var outWriter io.Writer
+	if cfg.LogFile != "" {
+		outFile, err := os.OpenFile(cfg.LogFile, os.O_TRUNC|os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Println(err.Error(), outFile)
+			outWriter = os.Stdout
+		} else {
+			outWriter = io.MultiWriter(os.Stdout, outFile)
+		}
+	}
 
+	logger := slog.New(tint.NewHandler(outWriter, &tint.Options{
+		Level: debugLevels[cfg.LogLevel],
+	}))
+
+	slog.SetDefault(logger)
 	return &cfg
 }

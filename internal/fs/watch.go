@@ -1,11 +1,12 @@
 package fs
 
 import (
+	"fmt"
 	"io/fs"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"bebop831.com/filo/internal/config"
 	"bebop831.com/filo/internal/util"
@@ -14,16 +15,15 @@ import (
 )
 
 // Watch new dirs, watching files is not reccomended in docs
-func OnCreate(event *fsnotify.Event, watcher *fsnotify.Watcher, logger *log.Logger) {
+func OnCreate(event *fsnotify.Event, watcher *fsnotify.Watcher) {
 	info, err := os.Lstat(filepath.Clean(event.Name)) // Stat follows symlink, Lstat returns sysmlink info
 	if err != nil {
-		logger.Println(err)
+		slog.Error(err.Error())
 		return
 	}
 
 	if info.IsDir() {
 		filepath.WalkDir(event.Name, func(path string, d fs.DirEntry, err error) error {
-			strings.Split(filepath.Clean(path), string(os.PathSeparator))
 			if err == nil && d.IsDir() {
 				watcher.Add(path)
 			}
@@ -32,18 +32,18 @@ func OnCreate(event *fsnotify.Event, watcher *fsnotify.Watcher, logger *log.Logg
 	}
 }
 
-func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *config.Config) {
+func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, syncChan chan struct{}, cfg *config.Config) {
 	// Turns this into go routine so that it matches above(i.e WatchChanges)
 
 	watcher, err := fsnotify.NewWatcher()
 	watcher.Add(cfg.SourceDir)
-	go OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: cfg.SourceDir}, watcher, cfg.Flogger)
+	go OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: cfg.SourceDir}, watcher)
 
 	if err != nil {
-		cfg.Flogger.Fatalln(err)
+		slog.Error(err.Error())
 	}
 
-	// TODO: Turns this into go routine, go WatchChanges
+	// TODO: Turns this into go routine, go util.WatchChanges
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -51,24 +51,26 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *co
 				return
 			}
 
+			if !IsApprovedPath(event.Name) {
+				continue
+			}
+
 			switch event.Op {
 			case fsnotify.Create:
-				cfg.Flogger.Println(util.CreateColor(event.Op), event.Name)
-				go OnCreate(&event, watcher, cfg.Flogger)
+				slog.Info(fmt.Sprint(util.CreateColor(event.Op), " ", event.Name))
+				go OnCreate(&event, watcher)
 
 			case fsnotify.Rename:
-				cfg.Flogger.Println(util.RenameColor(event.Op), event.Name)
+				slog.Info(fmt.Sprint(util.RenameColor(event.Op), " ", event.Name))
 
 			case fsnotify.Remove:
-				cfg.Flogger.Println(util.RemoveColor(event.Op), event.Name)
+				slog.Info(fmt.Sprint(util.RemoveColor(event.Op), " ", event.Name))
 
-			// case fsnotify.Chmod:
-			// 	continue
+			case fsnotify.Chmod:
+				continue
 
 			default:
-				if cfg.LogLevel == "debug" {
-					cfg.Flogger.Println(event.Op, event.Name)
-				}
+				slog.Debug(fmt.Sprint(event.Op, " ", event.Name))
 			}
 
 			eventChan <- event
@@ -78,9 +80,10 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *co
 				exitChan <- struct{}{}
 				return
 			}
-			cfg.Flogger.Println("error:", err)
+			log.Println("error:", err)
 
-		case <-exitChan:
+		case <-syncChan:
+			slog.Debug("received sync message")
 		}
 	}
 }

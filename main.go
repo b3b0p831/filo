@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -23,49 +24,51 @@ func init() {
 func main() {
 
 	if Cfg.LogLevel == "debug" {
-		Cfg.Flogger.Println("Starting FILO...")
+		slog.Info("Starting FILO...")
 	}
 
 	util.PrintBanner()
 
 	if len(Cfg.SourceDir) == 0 {
-		Cfg.Flogger.Fatalln("Invalid source dir.")
+		slog.Error("Invalid source dir.")
 	}
 
 	if len(Cfg.TargetDir) == 0 {
-		Cfg.Flogger.Fatalln("Invalid target dir.")
+		slog.Error("Invalid target dir.")
 	}
 
 	targetUsage, err := disk.Usage(Cfg.TargetDir)
 	if err != nil {
-		log.Fatalln(err, Cfg.TargetDir)
+		slog.Error(err.Error() + Cfg.TargetDir)
+		return
 	}
 
 	srcUsage, err := disk.Usage(Cfg.SourceDir)
 	if err != nil {
-		log.Fatalln(err, Cfg.SourceDir)
+		slog.Error(err.Error() + Cfg.SourceDir)
+		return
 	}
 
 	util.PrintConfig(Cfg, srcUsage, targetUsage)
-	log.Printf("Starting FILO watch on '%s'...\n", Cfg.SourceDir)
+	slog.Info(fmt.Sprintf("Starting FILO watch on '%s'...\n", Cfg.SourceDir))
 
-	srcTree := fs.BuildTree(Cfg.SourceDir)
-	targetTree := fs.BuildTree(Cfg.TargetDir)
+	srcTree, targetTree := fs.BuildTree(Cfg.SourceDir), fs.BuildTree(Cfg.TargetDir)
 
-	rn := time.Now()
+	rightNow := time.Now()
 	var missing map[string][]*fs.FileNode = srcTree.MissingIn(targetTree, func() {
-		log.Println("Elapsed:", time.Since(rn))
+		slog.Info(fmt.Sprint("Elapsed time: ", time.Since(rightNow)))
 	})
 
-	Cfg.Flogger.Println(missing)
+	slog.Debug(fmt.Sprintln(missing))
 	targetTree.CopyMissing(missing)
 
 	watcher, err := fsnotify.NewWatcher()
 	watcher.Add(Cfg.SourceDir)
-	go fs.OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: Cfg.SourceDir}, watcher, Cfg.Flogger)
+	go fs.OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: Cfg.SourceDir}, watcher)
 
 	if err != nil {
-		log.Fatalln(err)
+		slog.Error(err.Error())
+		return
 	}
 
 	eventChan := make(chan fsnotify.Event)
@@ -73,50 +76,8 @@ func main() {
 	syncChan := make(chan struct{})
 
 	go fs.SyncChanges(eventChan, exitChan, syncChan, Cfg)
+	go fs.WatchChanges(eventChan, exitChan, syncChan, Cfg)
 
-	// TODO: Turns this into go routine, go util.WatchChanges
-	for {
-		select {
-		case event, ok := <-watcher.Events:
-			if !ok {
-				return
-			}
-
-			if !fs.IsApprovedPath(event.Name) {
-				continue
-			}
-
-			switch event.Op {
-			case fsnotify.Create:
-				log.Println(util.CreateColor(event.Op), event.Name)
-				go fs.OnCreate(&event, watcher, Cfg.Flogger)
-
-			case fsnotify.Rename:
-				log.Println(util.RenameColor(event.Op), event.Name)
-
-			case fsnotify.Remove:
-				log.Println(util.RemoveColor(event.Op), event.Name)
-
-			case fsnotify.Chmod:
-				continue
-
-			default:
-				if Cfg.LogLevel == "debug" {
-					log.Println(event.Op, event.Name)
-				}
-			}
-
-			eventChan <- event
-
-		case err, ok := <-watcher.Errors:
-			if !ok {
-				exitChan <- struct{}{}
-				return
-			}
-			log.Println("error:", err)
-
-		case <-syncChan:
-		}
-	}
+	<-make(chan struct{})
 
 }

@@ -2,6 +2,7 @@ package fs
 
 import (
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// Sync maintains 2 directories that should be the same. Does not do intial sync. That should happen before arriving here.
+// Sync maintains 2 directories that should be the same.
 func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan chan struct{}, cfg *config.Config) {
 	minInterval := cfg.SyncDelay
 	// if err != nil {
@@ -59,13 +60,12 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 				// 	}
 				// }
 
-				cfg.Flogger.Printf("Syncing started: %v -> %v...\n", cfg.SourceDir, cfg.TargetDir)
+				slog.Info(fmt.Sprintf("Syncing started: %v -> %v...", cfg.SourceDir, cfg.TargetDir))
 				if syncChan != nil {
 					syncChan <- struct{}{}
 				}
 
-				cfg.Flogger.Printf("Sync completed successfully")
-
+				slog.Info("Sync completed successfully")
 				lastEvent = time.Time{} // reset
 				for k := range fileEvents {
 					delete(fileEvents, k)
