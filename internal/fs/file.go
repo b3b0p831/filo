@@ -125,7 +125,6 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 	}
 
 	const bufSize = 4 << 20 //4 MiB
-	//const bufSize = 4 << 10 //4 KiB
 	initSrcFileInfo, err := srcFileNode.Entry.Info()
 	if err != nil {
 		return false, err
@@ -260,7 +259,6 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 			}
 
 			if !didContain {
-				//Flogger.Println(targetRoot.Path, "!=", child.Entry.Name())
 				fp := filepath.Clean(targetRoot.Path)
 
 				Mu.Lock()
@@ -292,7 +290,7 @@ func copyChildren(rootPath string, children []*FileNode) {
 	for _, cc := range children {
 		srcFilePath := filepath.Join(cc.Parent.Path, cc.Entry.Name())
 		tgtTmpPath := filepath.Join(rootPath, cc.Entry.Name())
-		fmt.Sprintln(srcFilePath, "->", tgtTmpPath)
+		slog.Debug(fmt.Sprint(srcFilePath, " -> ", tgtTmpPath))
 	}
 }
 
