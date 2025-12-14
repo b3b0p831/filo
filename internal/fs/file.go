@@ -43,7 +43,7 @@ func BuildTree(rootPath string) *FileTree {
 		//Nothing to walk
 		case err != nil && path == rootPath:
 			ft = nil
-			slog.Error("ROOT " + err.Error())
+			slog.Error(err.Error())
 			return filepath.SkipAll
 
 		case err != nil:
@@ -245,7 +245,7 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 				tgtNode := targetRoot.Children[tgtNodeIdx]
 				if tgtNode.Entry.IsDir() == srcChildNode.Entry.IsDir() {
 					if tgtNode.Entry.IsDir() {
-						slog.Info(fmt.Sprint("COMPARE", srcChildNode.Path, "<->", tgtNode.Path))
+						slog.Debug(fmt.Sprintf("COMPARE %s <-> %s", srcChildNode.Path, tgtNode.Path))
 
 						walkMissingInBinary(srcChildNode, tgtNode, missingNodes, wg)
 						didContain = true

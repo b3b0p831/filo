@@ -59,6 +59,12 @@ func init() {
 			name:    "empty",
 			path:    filepath.Join(test_root, "empty"),
 			check:   nil,
+			wantErr: false,
+		},
+		{
+			name:    "thisdirdoesnotexist",
+			path:    filepath.Join(test_root, "thisdirdoesnotexist"),
+			check:   nil,
 			wantErr: true,
 		},
 	}

@@ -72,6 +72,8 @@ func Load() *Config {
 		} else {
 			outWriter = io.MultiWriter(os.Stdout, outFile)
 		}
+	} else {
+		outWriter = os.Stdout
 	}
 
 	logger := slog.New(tint.NewHandler(outWriter, &tint.Options{

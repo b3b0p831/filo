@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"bebop831.com/filo/internal/config"
@@ -14,18 +13,13 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 )
 
-var Cfg *config.Config = config.Load()
-var Mu *sync.Mutex
+var Cfg *config.Config
 
 func init() {
-	Mu = &sync.Mutex{}
+	Cfg = config.Load()
 }
 
 func main() {
-
-	if Cfg.LogLevel == "debug" {
-		slog.Info("Starting FILO...")
-	}
 
 	util.PrintBanner()
 
@@ -39,18 +33,18 @@ func main() {
 
 	targetUsage, err := disk.Usage(Cfg.TargetDir)
 	if err != nil {
-		slog.Error(err.Error() + Cfg.TargetDir)
+		slog.Error(err.Error() + " " + Cfg.TargetDir)
 		return
 	}
 
 	srcUsage, err := disk.Usage(Cfg.SourceDir)
 	if err != nil {
-		slog.Error(err.Error() + Cfg.SourceDir)
+		slog.Error(err.Error() + " " + Cfg.SourceDir)
 		return
 	}
 
 	util.PrintConfig(Cfg, srcUsage, targetUsage)
-	slog.Info(fmt.Sprintf("Starting FILO watch on '%s'...\n", Cfg.SourceDir))
+	slog.Info(fmt.Sprintf("Starting FILO watch on '%s'...", Cfg.SourceDir))
 
 	srcTree, targetTree := fs.BuildTree(Cfg.SourceDir), fs.BuildTree(Cfg.TargetDir)
 
