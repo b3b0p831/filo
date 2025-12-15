@@ -287,11 +287,43 @@ func (t *FileTree) MissingIn(otherTree *FileTree, runAfter func()) map[string][]
 
 func copyChildren(rootPath string, children []*FileNode) {
 
+	slog.Info(fmt.Sprint("rootPath: ", rootPath))
+	slog.Info(fmt.Sprint("children:", children))
 	for _, cc := range children {
-		srcFilePath := filepath.Join(cc.Parent.Path, cc.Entry.Name())
-		tgtTmpPath := filepath.Join(rootPath, cc.Entry.Name())
-		slog.Debug(fmt.Sprint(srcFilePath, " -> ", tgtTmpPath))
+		tgtPath := filepath.Join(rootPath, cc.Entry.Name())
+
+		if cc.Entry.IsDir() {
+			dirInfo, _ := cc.Entry.Info()
+			if err := os.Mkdir(tgtPath, dirInfo.Mode().Perm()); err != nil {
+				slog.Error(err.Error())
+				continue
+			}
+			copyChildren(tgtPath, cc.Children)
+		} else {
+			copyFile(cc.Path, tgtPath)
+		}
+
+		slog.Debug(fmt.Sprint(cc.Path, " -> ", tgtPath))
 	}
+}
+
+func copyFile(filePath string, tgtPath string) (int64, error) {
+
+	srcReader, err := os.OpenFile(filePath, os.O_RDONLY, 0666)
+	if err != nil {
+		slog.Error(err.Error())
+		return -1, err
+	}
+	defer srcReader.Close()
+
+	tgtWriter, err := os.OpenFile(tgtPath, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		slog.Error(err.Error())
+		return -1, err
+	}
+	defer tgtWriter.Close()
+
+	return io.Copy(tgtWriter, srcReader)
 }
 
 // IO Operations

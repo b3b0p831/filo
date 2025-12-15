@@ -67,6 +67,12 @@ func init() {
 			check:   nil,
 			wantErr: true,
 		},
+		{
+			name:    "symlinks",
+			path:    filepath.Join(test_root, "symlinks"),
+			check:   nil,
+			wantErr: true,
+		},
 	}
 }
 
@@ -162,14 +168,22 @@ func contentsCheck(targetRoot string, treeIndex map[string]*fs.FileNode) int {
 	// Execute the command and capture its combined output (stdout and stderr)
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if _, ok := treeIndex[line]; !ok {
+		if strings.Contains(line, " -> ") {
+			symlink := strings.Split(line, " -> ")
+			symNode, ok := treeIndex[symlink[0]]
 
-			//Ignore symlinks
-			if strings.Contains(line, " -> ") {
-				fmt.Println("Skipping symlink:", line)
-				continue
+			if ok {
+				symNodeInfo, err := symNode.Entry.Info()
+				if err != nil {
+					fmt.Println("Unable to get info on symlink ", symlink[0])
+				} else if symNodeInfo.Mode()&os.ModeSymlink != 0 {
+					fmt.Println("Skipping symlink:", symNode)
+				}
 			}
+			continue
+		}
 
+		if _, ok := treeIndex[line]; !ok {
 			fmt.Printf("expected %s in %s\n", line, targetRoot)
 		}
 	}
