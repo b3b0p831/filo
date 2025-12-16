@@ -172,7 +172,7 @@ func contentsCheck(targetRoot string, treeIndex map[string]*fs.FileNode) int {
 		if _, ok := treeIndex[line]; !ok {
 			symlink := strings.Split(line, " -> ")
 
-			symNodeInfo, err := os.Lstat(symlink[0])
+			symNodeInfo, err := os.Stat(symlink[0])
 			if err != nil {
 				fmt.Println(err)
 				return -1
