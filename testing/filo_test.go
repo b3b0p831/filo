@@ -168,22 +168,17 @@ func contentsCheck(targetRoot string, treeIndex map[string]*fs.FileNode) int {
 	// Execute the command and capture its combined output (stdout and stderr)
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if strings.Contains(line, " -> ") {
-			symlink := strings.Split(line, " -> ")
-			symNode, ok := treeIndex[symlink[0]]
-
-			if ok {
-				symNodeInfo, err := symNode.Entry.Info()
-				if err != nil {
-					fmt.Println("Unable to get info on symlink ", symlink[0])
-				} else if symNodeInfo.Mode()&os.ModeSymlink != 0 {
-					fmt.Println("Skipping symlink:", symNode)
-				}
-			}
-			continue
-		}
 
 		if _, ok := treeIndex[line]; !ok {
+			symlink := strings.Split(line, " -> ")
+			symNode := treeIndex[symlink[0]]
+
+			symNodeInfo, err := symNode.Entry.Info()
+			if err != nil || symNodeInfo.Mode()&os.ModeSymlink != 0 {
+				fmt.Println("Skipping symlink:", symNode.Path)
+				continue
+			}
+
 			fmt.Printf("expected %s in %s\n", line, targetRoot)
 		}
 	}
