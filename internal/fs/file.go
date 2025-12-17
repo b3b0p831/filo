@@ -285,10 +285,10 @@ func (t *FileTree) MissingIn(otherTree *FileTree, runAfter func()) map[string][]
 	return missing
 }
 
-func copyChildren(rootPath string, children []*FileNode) {
+func copyChildren(rootPath string, children []*FileNode, wg *sync.WaitGroup) {
 
-	slog.Info(fmt.Sprint("rootPath: ", rootPath))
-	slog.Info(fmt.Sprint("children:", children))
+	slog.Debug(fmt.Sprint("rootPath: ", rootPath))
+	slog.Debug(fmt.Sprint("children:", children))
 	for _, cc := range children {
 		tgtPath := filepath.Join(rootPath, cc.Entry.Name())
 
@@ -298,12 +298,15 @@ func copyChildren(rootPath string, children []*FileNode) {
 				slog.Error(err.Error())
 				continue
 			}
-			copyChildren(tgtPath, cc.Children)
+			slog.Debug(fmt.Sprint(cc.Path, " -> ", tgtPath))
+			copyChildren(tgtPath, cc.Children, wg)
 		} else {
-			copyFile(cc.Path, tgtPath)
+			wg.Go(func() {
+				if _, err := copyFile(cc.Path, tgtPath); err != nil {
+					slog.Error(err.Error())
+				}
+			})
 		}
-
-		slog.Debug(fmt.Sprint(cc.Path, " -> ", tgtPath))
 	}
 }
 
@@ -323,44 +326,54 @@ func copyFile(filePath string, tgtPath string) (int64, error) {
 	}
 	defer tgtWriter.Close()
 
-	return io.Copy(tgtWriter, srcReader)
+	written, err := io.Copy(tgtWriter, srcReader)
+	slog.Debug(fmt.Sprint(filePath, " -> ", tgtPath))
+	return written, err
 }
 
 // IO Operations
 func (t *FileTree) CopyMissing(missing map[string][]*FileNode) {
+
+	var wg sync.WaitGroup
 	for targetPath, currentChildren := range missing {
-		go copyChildren(targetPath, currentChildren)
+		copyChildren(targetPath, currentChildren, &wg)
 	}
+	wg.Wait()
+
 }
 
 func (n *FileNode) String() string {
-	var sb strings.Builder
+	if n == nil {
+		return "<nil FileNode>"
+	}
 
-	sb.WriteString("FileNode\n")
-
+	entry := "<nil>"
 	if n.Entry != nil {
-		sb.WriteString(fmt.Sprintf("  Entry: %s\n", n.Entry.Name()))
-	} else {
-		sb.WriteString("  Entry: <nil>\n")
+		entry = n.Entry.Name()
 	}
 
+	parent := "<nil>"
 	if n.Parent != nil {
-		sb.WriteString(fmt.Sprintf("  Parent: %s\n", n.Parent.Path))
-	} else {
-		sb.WriteString("  Parent: <nil>\n")
+		parent = n.Parent.Path
 	}
 
-	if n.Children != nil {
-		tmpChildren := make([]string, len(n.Children))
+	children := "<nil>"
+	if len(n.Children) > 0 {
+		names := make([]string, 0, len(n.Children))
 		for _, c := range n.Children {
-			if c.Entry != nil {
-				tmpChildren = append(tmpChildren, c.Entry.Name())
+			if c != nil && c.Entry != nil {
+				names = append(names, c.Entry.Name())
 			}
 		}
-		sb.WriteString(fmt.Sprintf("  Children: %v\n", tmpChildren))
+		children = fmt.Sprintf("%v", names)
 	}
 
-	return sb.String()
+	return fmt.Sprintf(
+		"FileNode{Entry=%s, Parent=%s, Children=%s}",
+		entry,
+		parent,
+		children,
+	)
 }
 
 func (t *FileTree) String() string {

@@ -50,19 +50,15 @@ func main() {
 
 	rightNow := time.Now()
 	var missing map[string][]*fs.FileNode = srcTree.MissingIn(targetTree, func() {
-		slog.Info(fmt.Sprint("Elapsed time: ", time.Since(rightNow)))
+		slog.Debug(fmt.Sprint("srcTree.Missingin(targetTree) Elapsed time: ", time.Since(rightNow)))
 	})
 
-	slog.Debug(fmt.Sprintln(missing))
-	targetTree.CopyMissing(missing)
-
-	watcher, err := fsnotify.NewWatcher()
-	watcher.Add(Cfg.SourceDir)
-	go fs.OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: Cfg.SourceDir}, watcher)
-
-	if err != nil {
-		slog.Error(err.Error())
-		return
+	//Perform Initial Sync
+	if len(missing) != 0 {
+		slog.Info("performing initial file sync...")
+		slog.Debug(fmt.Sprintln(missing))
+		targetTree.CopyMissing(missing)
+		slog.Info("initial file sync complete...")
 	}
 
 	eventChan := make(chan fsnotify.Event)
