@@ -22,12 +22,15 @@ type Config struct {
 	SyncDelay          time.Duration `mapstructure:"sync_delay"`
 	ApprovedExtensions []string      `mapstructure:"approved_extensions"`
 	LogFile            string        `mapstructure:"log_file"`
+	MaxOpenFile        int           `mapstructure:"max_openfile"`
 }
 
 func (cfg *Config) Equal(otherCFG Config) bool {
 
 	return cfg.TargetDir == otherCFG.TargetDir && cfg.SourceDir == otherCFG.SourceDir &&
-		cfg.MaxFill == otherCFG.MaxFill && cfg.SyncDelay == otherCFG.SyncDelay && slices.Equal(cfg.ApprovedExtensions, otherCFG.ApprovedExtensions)
+		cfg.MaxFill == otherCFG.MaxFill && cfg.SyncDelay == otherCFG.SyncDelay &&
+		slices.Equal(cfg.ApprovedExtensions, otherCFG.ApprovedExtensions) && cfg.LogFile == otherCFG.LogFile &&
+		cfg.MaxOpenFile == otherCFG.MaxOpenFile
 }
 
 var debugLevels = map[string]slog.Level{
@@ -44,6 +47,7 @@ func Load() *Config {
 	v.SetDefault("max_fill", 0.92) // The actions of this program cannot result in a change where new target size > max_fill
 	v.SetDefault("log_level", "info")
 	v.SetDefault("sync_delay", "30s")
+	v.SetDefault("max_openfile", "100")
 
 	// Config file name and type
 	v.SetConfigName("config") // without extension
@@ -65,7 +69,7 @@ func Load() *Config {
 
 	var outWriter io.Writer
 	if cfg.LogFile != "" {
-		outFile, err := os.OpenFile(cfg.LogFile, os.O_TRUNC|os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		outFile, err := os.OpenFile(cfg.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Println(err.Error(), outFile)
 			outWriter = os.Stdout

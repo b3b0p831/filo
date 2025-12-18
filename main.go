@@ -14,9 +14,11 @@ import (
 )
 
 var Cfg *config.Config
+var maxFileSephamore chan struct{}
 
 func init() {
 	Cfg = config.Load()
+	maxFileSephamore = make(chan struct{}, Cfg.MaxOpenFile)
 }
 
 func main() {
@@ -48,6 +50,7 @@ func main() {
 
 	srcTree, targetTree := fs.BuildTree(Cfg.SourceDir), fs.BuildTree(Cfg.TargetDir)
 
+	slog.Info("Checking if initial file sync is needed...")
 	rightNow := time.Now()
 	var missing map[string][]*fs.FileNode = srcTree.MissingIn(targetTree, func() {
 		slog.Debug(fmt.Sprint("srcTree.Missingin(targetTree) Elapsed time: ", time.Since(rightNow)))
@@ -55,10 +58,15 @@ func main() {
 
 	//Perform Initial Sync
 	if len(missing) != 0 {
-		slog.Info("performing initial file sync...")
+		slog.Info("Performing initial file sync...")
+		rightNow = time.Now()
 		slog.Debug(fmt.Sprintln(missing))
-		targetTree.CopyMissing(missing)
-		slog.Info("initial file sync complete...")
+		targetTree.CopyMissing(missing, maxFileSephamore, func() {
+			slog.Info(fmt.Sprint("Initial file sync complete, Elapsed time: ", time.Since(rightNow)))
+		})
+
+	} else {
+		slog.Info("Skipping initial file sync...")
 	}
 
 	eventChan := make(chan fsnotify.Event)

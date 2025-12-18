@@ -34,12 +34,17 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 		case <-time.After(minInterval):
 			if !lastEvent.IsZero() && time.Since(lastEvent) >= minInterval {
 
+				slog.Info(fmt.Sprintf("Syncing started: %v -> %v...", cfg.SourceDir, cfg.TargetDir))
+				if syncChan != nil {
+					syncChan <- struct{}{}
+				}
+
 				srcFileTree := BuildTree(cfg.SourceDir)
 				dstFileTree := BuildTree(cfg.TargetDir)
 
-				fmt.Println(srcFileTree)
-				fmt.Println(dstFileTree)
-				fmt.Println(srcFileTree.MissingIn(dstFileTree, nil))
+				slog.Debug(fmt.Sprint(srcFileTree))
+				slog.Debug(fmt.Sprint(dstFileTree))
+				slog.Debug(fmt.Sprint(srcFileTree.MissingIn(dstFileTree, nil)))
 
 				// for Op, Paths := range fileEvents {
 				// 	switch Op {
@@ -60,16 +65,8 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 				// 	}
 				// }
 
-				slog.Info(fmt.Sprintf("Syncing started: %v -> %v...", cfg.SourceDir, cfg.TargetDir))
-				if syncChan != nil {
-					syncChan <- struct{}{}
-				}
-
 				slog.Info("Sync completed successfully")
 				lastEvent = time.Time{} // reset
-				for k := range fileEvents {
-					delete(fileEvents, k)
-				}
 
 			}
 

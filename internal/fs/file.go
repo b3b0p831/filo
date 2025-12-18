@@ -89,7 +89,7 @@ func BuildTree(rootPath string) *FileTree {
 				})
 			}
 		} else if d.IsDir() {
-			slog.Warn(fmt.Sprint("Unapproved directory: ", path))
+			slog.Warn(fmt.Sprint("Skipping: ", path))
 			return filepath.SkipDir
 		}
 
@@ -285,7 +285,7 @@ func (t *FileTree) MissingIn(otherTree *FileTree, runAfter func()) map[string][]
 	return missing
 }
 
-func copyChildren(rootPath string, children []*FileNode, wg *sync.WaitGroup) {
+func copyChildren(rootPath string, children []*FileNode, routineSephamore chan struct{}, wg *sync.WaitGroup) {
 
 	slog.Debug(fmt.Sprint("rootPath: ", rootPath))
 	slog.Debug(fmt.Sprint("children:", children))
@@ -299,13 +299,17 @@ func copyChildren(rootPath string, children []*FileNode, wg *sync.WaitGroup) {
 				continue
 			}
 			slog.Debug(fmt.Sprint(cc.Path, " -> ", tgtPath))
-			copyChildren(tgtPath, cc.Children, wg)
+			copyChildren(tgtPath, cc.Children, routineSephamore, wg)
 		} else {
-			wg.Go(func() {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				routineSephamore <- struct{}{}
 				if _, err := copyFile(cc.Path, tgtPath); err != nil {
 					slog.Error(err.Error())
 				}
-			})
+				<-routineSephamore
+			}()
 		}
 	}
 }
@@ -332,14 +336,18 @@ func copyFile(filePath string, tgtPath string) (int64, error) {
 }
 
 // IO Operations
-func (t *FileTree) CopyMissing(missing map[string][]*FileNode) {
+func (t *FileTree) CopyMissing(missing map[string][]*FileNode, maxFileSemaphore chan struct{}, runAfter func()) {
 
 	var wg sync.WaitGroup
 	for targetPath, currentChildren := range missing {
-		copyChildren(targetPath, currentChildren, &wg)
+		copyChildren(targetPath, currentChildren, maxFileSemaphore, &wg)
 	}
+
 	wg.Wait()
 
+	if runAfter != nil {
+		runAfter()
+	}
 }
 
 func (n *FileNode) String() string {
