@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -219,7 +220,7 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 	return false, fmt.Errorf("changes detected while comparing nodes %v with %v", srcFileNode, tgtFileNode)
 }
 
-func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[string][]*FileNode, wg *sync.WaitGroup) {
+func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[string][]*FileNode, wg *sync.WaitGroup, maxFileSemaphore chan struct{}) {
 
 	if sourceRoot == nil || targetRoot == nil {
 		return
@@ -228,6 +229,7 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 	for _, srcChildNode := range sourceRoot.Children {
 
 		wg.Go(func() {
+			fmt.Println("Num of goroutines: ", runtime.NumGoroutine())
 
 			didContain := false
 			tgtNodeIdx := sort.Search(len(targetRoot.Children), func(i int) bool {
@@ -246,14 +248,16 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 					if tgtNode.Entry.IsDir() {
 						slog.Debug(fmt.Sprintf("COMPARE %s <-> %s", srcChildNode.Path, tgtNode.Path))
 
-						walkMissingInBinary(srcChildNode, tgtNode, missingNodes, wg)
+						walkMissingInBinary(srcChildNode, tgtNode, missingNodes, wg, maxFileSemaphore)
 						didContain = true
 					} else {
+						maxFileSemaphore <- struct{}{}
 						sameFilesB, err := compareFileNodes(srcChildNode, tgtNode)
 						if err != nil {
 							slog.Info(err.Error())
 						}
 						didContain = sameFilesB
+						<-maxFileSemaphore
 					}
 				}
 			}
@@ -272,10 +276,10 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 
 // Returns a map where the keys are paths located in otherTree, and the values are the missing children for that key
 // For example, {"/mnt/media" : [tv, yt, movies]} means that directory "/mnt/media" in tgt is missing the children 'tv', 'yt', 'movies' which are present in src
-func (t *FileTree) MissingIn(otherTree *FileTree, runAfter func()) map[string][]*FileNode {
+func (t *FileTree) MissingIn(otherTree *FileTree, runAfter func(), maxFileSemaphore chan struct{}) map[string][]*FileNode {
 	missing := make(map[string][]*FileNode)
 	var wg sync.WaitGroup
-	walkMissingInBinary(t.Root, otherTree.Root, missing, &wg)
+	walkMissingInBinary(t.Root, otherTree.Root, missing, &wg, maxFileSemaphore)
 	wg.Wait()
 
 	if runAfter != nil {

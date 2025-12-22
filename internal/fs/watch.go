@@ -33,15 +33,17 @@ func OnCreate(event *fsnotify.Event, watcher *fsnotify.Watcher) {
 }
 
 func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, syncChan chan struct{}, cfg *config.Config) {
-	// Turns this into go routine so that it matches above(i.e WatchChanges)
-
 	watcher, err := fsnotify.NewWatcher()
-	watcher.Add(cfg.SourceDir)
-	go OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: cfg.SourceDir}, watcher)
-
 	if err != nil {
 		slog.Error(err.Error())
 	}
+
+	watcher.Add(cfg.SourceDir)
+	if err != nil {
+		slog.Error(err.Error())
+	}
+
+	go OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: cfg.SourceDir}, watcher)
 
 	// TODO: Turns this into go routine, go util.WatchChanges
 	for {
