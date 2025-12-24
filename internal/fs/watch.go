@@ -72,7 +72,7 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, syncCha
 				continue
 
 			default:
-				slog.Debug(fmt.Sprint(event.Op, " ", event.Name))
+				slog.Info(fmt.Sprint(event.Op, " ", event.Name))
 			}
 
 			eventChan <- event

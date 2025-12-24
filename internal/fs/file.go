@@ -9,9 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 )
@@ -229,20 +227,12 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 	for _, srcChildNode := range sourceRoot.Children {
 
 		wg.Go(func() {
-			fmt.Println("Num of goroutines: ", runtime.NumGoroutine())
-
 			didContain := false
-			tgtNodeIdx := sort.Search(len(targetRoot.Children), func(i int) bool {
-				// Compare names first
-				cmp := strings.Compare(targetRoot.Children[i].Entry.Name(), srcChildNode.Entry.Name())
-				if cmp == 0 {
-					// Found exact match
-					return true
-				}
-				return cmp >= 0 // true once we've passed or matched the target
+			tgtNodeIdx, found := slices.BinarySearchFunc(targetRoot.Children, srcChildNode, func(srcNode, tgtNode *FileNode) int {
+				return strings.Compare(srcNode.Entry.Name(), tgtNode.Entry.Name())
 			})
 
-			if tgtNodeIdx < len(targetRoot.Children) {
+			if found && tgtNodeIdx < len(targetRoot.Children) {
 				tgtNode := targetRoot.Children[tgtNodeIdx]
 				if tgtNode.Entry.IsDir() == srcChildNode.Entry.IsDir() {
 					if tgtNode.Entry.IsDir() {

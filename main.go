@@ -46,7 +46,6 @@ func main() {
 	}
 
 	util.PrintConfig(Cfg, srcUsage, targetUsage)
-	slog.Info(fmt.Sprintf("Starting FILO watch on '%s'...", Cfg.SourceDir))
 
 	srcTree, targetTree := fs.BuildTree(Cfg.SourceDir), fs.BuildTree(Cfg.TargetDir)
 
@@ -70,6 +69,7 @@ func main() {
 	exitChan := make(chan struct{})
 	syncChan := make(chan struct{})
 
+	slog.Info(fmt.Sprintf("Starting FILO watch on '%s'...", Cfg.SourceDir))
 	go fs.SyncChanges(eventChan, exitChan, syncChan, maxFileSemaphore, Cfg)
 	go fs.WatchChanges(eventChan, exitChan, syncChan, Cfg)
 
