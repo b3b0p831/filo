@@ -47,19 +47,21 @@ func main() {
 
 	util.PrintConfig(Cfg, srcUsage, targetUsage)
 
-	srcTree, targetTree := fs.BuildTree(Cfg.SourceDir), fs.BuildTree(Cfg.TargetDir)
+	srcTree := fs.BuildTree(Cfg.SourceDir)
+	//if Cfg.WatchOnlyInSrc BuildTargetTree else BuildTree
+	targetTree := fs.BuildTargetTree(srcTree, Cfg.TargetDir)
 
 	rightNow := time.Now()
-	var missing map[string][]*fs.FileNode = srcTree.MissingIn(targetTree, func() {
+	var missing map[string][]*fs.FileNode = srcTree.MissingIn(targetTree, maxFileSemaphore, func() {
 		slog.Debug(fmt.Sprint("srcTree.Missingin(targetTree) Elapsed time: ", time.Since(rightNow)))
-	}, maxFileSemaphore)
+	})
 
 	//Perform Initial Sync
 	if len(missing) != 0 {
 		slog.Info("Performing initial file sync...")
 		rightNow = time.Now()
 		slog.Debug(fmt.Sprintln(missing))
-		targetTree.CopyMissing(missing, maxFileSemaphore, func() {
+		targetTree.CopyFrom(srcTree, missing, maxFileSemaphore, func() {
 			slog.Info(fmt.Sprint("Initial file sync complete, Elapsed time: ", time.Since(rightNow)))
 		})
 
@@ -70,8 +72,9 @@ func main() {
 	syncChan := make(chan struct{})
 
 	slog.Info(fmt.Sprintf("Starting FILO watch on '%s'...", Cfg.SourceDir))
-	go fs.SyncChanges(eventChan, exitChan, syncChan, maxFileSemaphore, Cfg)
+
 	go fs.WatchChanges(eventChan, exitChan, syncChan, Cfg)
+	go fs.SyncChanges(eventChan, exitChan, syncChan, maxFileSemaphore, Cfg)
 
 	<-make(chan struct{})
 

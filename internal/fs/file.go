@@ -34,7 +34,7 @@ type FileTree struct {
 	Index map[string]*FileNode
 }
 
-func BuildTree(rootPath string) *FileTree {
+func buildTree(src *FileTree, rootPath string) *FileTree {
 	ft := &FileTree{Index: make(map[string]*FileNode), Root: &FileNode{Path: rootPath}}
 
 	filepath.WalkDir(ft.Root.Path, func(path string, d fs.DirEntry, err error) error {
@@ -50,7 +50,23 @@ func BuildTree(rootPath string) *FileTree {
 			return filepath.SkipDir
 		}
 
-		if IsApprovedPath(path) {
+		relPath, err := filepath.Rel(ft.Root.Path, path)
+		if err != nil {
+			slog.Error(err.Error())
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		var tmpNode *FileNode //Do not consider contents of src
+		if src != nil {
+			srcFilePath := filepath.Join(src.Root.Path, relPath)
+			tmpNode = src.Index[srcFilePath]
+			slog.Info(fmt.Sprint(tmpNode))
+		}
+
+		if IsApprovedPath(path) && tmpNode != nil {
 
 			currentNode := ft.Index[path]
 			if currentNode == nil {
@@ -87,7 +103,7 @@ func BuildTree(rootPath string) *FileTree {
 					return strings.Compare(this.Entry.Name(), that.Entry.Name())
 				})
 			}
-		} else if d.IsDir() {
+		} else if d.IsDir() && path != ft.Root.Path {
 			slog.Warn(fmt.Sprint("Skipping: ", path))
 			return filepath.SkipDir
 		}
@@ -96,6 +112,16 @@ func BuildTree(rootPath string) *FileTree {
 	})
 
 	return ft
+}
+
+// Same as BuildTree except checks if file in rootPath is also in src.
+// Prevents removing files that that don't exist in src but do in tgt.
+func BuildTargetTree(src *FileTree, rootPath string) *FileTree {
+	return buildTree(src, rootPath)
+}
+
+func BuildTree(rootPath string) *FileTree {
+	return buildTree(nil, rootPath)
 }
 
 func IsApprovedPath(path string) bool {
@@ -266,7 +292,7 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 
 // Returns a map where the keys are paths located in otherTree, and the values are the missing children for that key
 // For example, {"/mnt/media" : [tv, yt, movies]} means that directory "/mnt/media" in tgt is missing the children 'tv', 'yt', 'movies' which are present in src
-func (t *FileTree) MissingIn(otherTree *FileTree, runAfter func(), maxFileSemaphore chan struct{}) map[string][]*FileNode {
+func (t *FileTree) MissingIn(otherTree *FileTree, maxFileSemaphore chan struct{}, runAfter func()) map[string][]*FileNode {
 	missing := make(map[string][]*FileNode)
 	var wg sync.WaitGroup
 	walkMissingInBinary(t.Root, otherTree.Root, missing, &wg, maxFileSemaphore)
@@ -279,45 +305,78 @@ func (t *FileTree) MissingIn(otherTree *FileTree, runAfter func(), maxFileSemaph
 	return missing
 }
 
-func copyChildren(rootPath string, children []*FileNode, routineSephamore chan struct{}, wg *sync.WaitGroup) {
+func (ft *FileTree) RelBaseFile(fileToBeRemoved string) string {
+	relBaseFile, err := filepath.Rel(ft.Root.Path, fileToBeRemoved)
+	if err != nil {
+		slog.Error(err.Error())
+		return ""
+	}
 
-	slog.Debug(fmt.Sprint("rootPath: ", rootPath))
+	return relBaseFile
+}
+
+func copyChildren(src *FileTree, tgt *FileTree, currentPath string, children []*FileNode, maxFileSemaphore chan struct{}, wg *sync.WaitGroup) {
+
+	slog.Debug(fmt.Sprint("rootPath: ", currentPath))
 	slog.Debug(fmt.Sprint("children:", children))
 	for _, cc := range children {
-		tgtPath := filepath.Join(rootPath, cc.Entry.Name())
+		tgtPath := filepath.Join(currentPath, cc.Entry.Name())
 
 		if cc.Entry.IsDir() {
 			dirInfo, _ := cc.Entry.Info()
 			if err := os.Mkdir(tgtPath, dirInfo.Mode().Perm()); err != nil {
-				slog.Error(err.Error())
-				continue
+				if !errors.Is(err, os.ErrExist) {
+					slog.Error(err.Error())
+					continue
+				}
+
+				slog.Info(err.Error())
 			}
+
 			slog.Debug(fmt.Sprint(cc.Path, " -> ", tgtPath))
-			copyChildren(tgtPath, cc.Children, routineSephamore, wg)
+			copyChildren(src, tgt, tgtPath, cc.Children, maxFileSemaphore, wg)
 		} else {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				routineSephamore <- struct{}{}
-				if _, err := copyFile(cc.Path, tgtPath); err != nil {
+			wg.Go(func() {
+				maxFileSemaphore <- struct{}{}
+				relPath, err := filepath.Rel(src.Root.Path, cc.Path)
+				slog.Debug(relPath)
+				if err != nil {
 					slog.Error(err.Error())
 				}
-				<-routineSephamore
-			}()
+
+				if _, err := copyFile(src.Root.Path, tgt.Root.Path, relPath); err != nil {
+					slog.Error(err.Error())
+				}
+				<-maxFileSemaphore
+			})
 		}
 	}
 }
 
-func copyFile(filePath string, tgtPath string) (int64, error) {
+func copyFile(srcRootPath string, tgtRootPath string, relPath string) (int64, error) {
 
-	srcReader, err := os.OpenFile(filePath, os.O_RDONLY, 0666)
+	srcRoot, err := os.OpenRoot(srcRootPath)
+	if err != nil {
+		slog.Error(err.Error())
+		return -1, err
+	}
+	defer srcRoot.Close()
+
+	tgtRoot, err := os.OpenRoot(tgtRootPath)
+	if err != nil {
+		slog.Error(err.Error())
+		return -1, err
+	}
+	defer tgtRoot.Close()
+
+	srcReader, err := srcRoot.OpenFile(relPath, os.O_RDONLY, 0666)
 	if err != nil {
 		slog.Error(err.Error())
 		return -1, err
 	}
 	defer srcReader.Close()
 
-	tgtWriter, err := os.OpenFile(tgtPath, os.O_CREATE|os.O_WRONLY, 0644)
+	tgtWriter, err := tgtRoot.OpenFile(relPath, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		slog.Error(err.Error())
 		return -1, err
@@ -325,16 +384,67 @@ func copyFile(filePath string, tgtPath string) (int64, error) {
 	defer tgtWriter.Close()
 
 	written, err := io.Copy(tgtWriter, srcReader)
-	slog.Debug(fmt.Sprint(filePath, " -> ", tgtPath))
+	slog.Debug(fmt.Sprintf("%s -> %s", filepath.Join(srcRootPath, relPath), filepath.Join(tgtRootPath, relPath)))
 	return written, err
 }
 
-// IO Operations
-func (t *FileTree) CopyMissing(missing map[string][]*FileNode, maxFileSemaphore chan struct{}, runAfter func()) {
+// CopyFrom will copy the children located in the childrenByTgtPath map, this map uses abs paths in t *FileTree as keys and the values are
+// slices containing the nodes that will be copied to that key/path in t. childrenByTgtPath will look like { "/path/to/tgt", ["movies", "tv", "yt"]}
+// This mean in "/path/to/tgt" copy movies, tv and yt
+func (t *FileTree) CopyFrom(src *FileTree, childrenByTgtPath map[string][]*FileNode, maxFileSemaphore chan struct{}, runAfter func()) {
 
 	var wg sync.WaitGroup
-	for targetPath, currentChildren := range missing {
-		copyChildren(targetPath, currentChildren, maxFileSemaphore, &wg)
+	for targetPath, currentChildren := range childrenByTgtPath {
+		copyChildren(src, t, targetPath, currentChildren, maxFileSemaphore, &wg)
+	}
+
+	wg.Wait()
+
+	if runAfter != nil {
+		runAfter()
+	}
+}
+
+func removeChildren(src *FileTree, tgt *FileTree, currentPath string, children []*FileNode, wg *sync.WaitGroup) {
+
+	slog.Debug(fmt.Sprint("rootPath: ", currentPath))
+	slog.Debug(fmt.Sprint("children:", children))
+	tgtRoot, err := os.OpenRoot(tgt.Root.Path)
+	if err != nil {
+		slog.Error(err.Error())
+		return
+	}
+
+	defer tgtRoot.Close()
+	for _, cc := range children {
+
+		wg.Go(func() {
+			relBaseFile := src.RelBaseFile(cc.Path)
+
+			if filepath.IsLocal(relBaseFile) {
+				if err := tgtRoot.RemoveAll(relBaseFile); err != nil {
+					slog.Error(err.Error())
+					return
+				}
+
+				if _, err := tgtRoot.Lstat(relBaseFile); errors.Is(err, os.ErrNotExist) {
+					slog.Info(fmt.Sprintf("%s successfully deleted from %s", relBaseFile, tgt.Root.Path))
+				} else {
+					slog.Error(err.Error())
+				}
+
+			} else {
+				slog.Info(fmt.Sprintf("failed to delete %s", filepath.Join(tgt.Root.Path, relBaseFile)))
+			}
+		})
+	}
+}
+
+func (t *FileTree) Remove(src *FileTree, childrenByTgtPath map[string][]*FileNode, runAfter func()) {
+
+	var wg sync.WaitGroup
+	for targetPath, currentChildren := range childrenByTgtPath {
+		removeChildren(src, t, targetPath, currentChildren, &wg)
 	}
 
 	wg.Wait()
