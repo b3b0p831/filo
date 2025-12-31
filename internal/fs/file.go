@@ -59,14 +59,19 @@ func buildTree(src *FileTree, rootPath string) *FileTree {
 			return nil
 		}
 
-		var tmpNode *FileNode //Do not consider contents of src
 		if src != nil {
 			srcFilePath := filepath.Join(src.Root.Path, relPath)
-			tmpNode = src.Index[srcFilePath]
-			slog.Info(fmt.Sprint(tmpNode))
+			if src.Root.Path != srcFilePath {
+				if _, ok := src.Index[srcFilePath]; !ok {
+					if d.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+			}
 		}
 
-		if IsApprovedPath(path) && tmpNode != nil {
+		if IsApprovedPath(path) {
 
 			currentNode := ft.Index[path]
 			if currentNode == nil {
@@ -92,6 +97,20 @@ func buildTree(src *FileTree, rootPath string) *FileTree {
 				for _, e := range entries {
 					possiblePath := filepath.Join(path, e.Name())
 					if IsApprovedPath(possiblePath) {
+						relPath := ft.RelBaseFile(possiblePath)
+
+						if src != nil {
+							srcFilePath := filepath.Join(src.Root.Path, relPath)
+							if src.Root.Path != srcFilePath {
+								if _, ok := src.Index[srcFilePath]; !ok {
+									if d.IsDir() {
+										return filepath.SkipDir
+									}
+									return nil
+								}
+							}
+						}
+
 						childNode := &FileNode{Path: possiblePath, Entry: e, Parent: currentNode, Children: make([]*FileNode, 0)}
 						currentNode.Children = append(currentNode.Children, childNode)
 						ft.Index[childNode.Path] = childNode
@@ -405,21 +424,14 @@ func (t *FileTree) CopyFrom(src *FileTree, childrenByTgtPath map[string][]*FileN
 	}
 }
 
-func removeChildren(src *FileTree, tgt *FileTree, currentPath string, children []*FileNode, wg *sync.WaitGroup) {
+func removeChildren(tgtRoot *os.Root, tgt *FileTree, currentPath string, children []*FileNode, wg *sync.WaitGroup) {
 
-	slog.Debug(fmt.Sprint("rootPath: ", currentPath))
-	slog.Debug(fmt.Sprint("children:", children))
-	tgtRoot, err := os.OpenRoot(tgt.Root.Path)
-	if err != nil {
-		slog.Error(err.Error())
-		return
-	}
-
-	defer tgtRoot.Close()
 	for _, cc := range children {
+		slog.Debug(fmt.Sprint("rootPath: ", currentPath))
+		slog.Debug(fmt.Sprint("children:", children))
 
 		wg.Go(func() {
-			relBaseFile := src.RelBaseFile(cc.Path)
+			relBaseFile := tgt.RelBaseFile(cc.Path)
 
 			if filepath.IsLocal(relBaseFile) {
 				if err := tgtRoot.RemoveAll(relBaseFile); err != nil {
@@ -443,8 +455,15 @@ func removeChildren(src *FileTree, tgt *FileTree, currentPath string, children [
 func (t *FileTree) Remove(src *FileTree, childrenByTgtPath map[string][]*FileNode, runAfter func()) {
 
 	var wg sync.WaitGroup
+	tgtRoot, err := os.OpenRoot(t.Root.Path)
+	if err != nil {
+		slog.Error(err.Error())
+		return
+	}
+
+	defer tgtRoot.Close()
 	for targetPath, currentChildren := range childrenByTgtPath {
-		removeChildren(src, t, targetPath, currentChildren, &wg)
+		removeChildren(tgtRoot, t, targetPath, currentChildren, &wg)
 	}
 
 	wg.Wait()

@@ -59,6 +59,7 @@ func main() {
 	//Perform Initial Sync
 	if len(missing) != 0 {
 		slog.Info("Performing initial file sync...")
+		slog.Info(fmt.Sprint(missing))
 		rightNow = time.Now()
 		slog.Debug(fmt.Sprintln(missing))
 		targetTree.CopyFrom(srcTree, missing, maxFileSemaphore, func() {
