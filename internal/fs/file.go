@@ -103,10 +103,7 @@ func buildTree(src *FileTree, rootPath string) *FileTree {
 							srcFilePath := filepath.Join(src.Root.Path, relPath)
 							if src.Root.Path != srcFilePath {
 								if _, ok := src.Index[srcFilePath]; !ok {
-									if d.IsDir() {
-										return filepath.SkipDir
-									}
-									return nil
+									continue
 								}
 							}
 						}
@@ -310,7 +307,8 @@ func walkMissingInBinary(sourceRoot, targetRoot *FileNode, missingNodes map[stri
 }
 
 // Returns a map where the keys are paths located in otherTree, and the values are the missing children for that key
-// For example, {"/mnt/media" : [tv, yt, movies]} means that directory "/mnt/media" in tgt is missing the children 'tv', 'yt', 'movies' which are present in src
+// For example, {"/mnt/media" : [tv, yt, movies]} means that directory "/mnt/media" in otherTree is missing the children 'tv', 'yt', 'movies'
+// which are present in t
 func (t *FileTree) MissingIn(otherTree *FileTree, maxFileSemaphore chan struct{}, runAfter func()) map[string][]*FileNode {
 	missing := make(map[string][]*FileNode)
 	var wg sync.WaitGroup
@@ -462,6 +460,8 @@ func (t *FileTree) Remove(src *FileTree, childrenByTgtPath map[string][]*FileNod
 	}
 
 	defer tgtRoot.Close()
+	slog.Info(fmt.Sprint(src))
+	slog.Info(fmt.Sprint(t))
 	for targetPath, currentChildren := range childrenByTgtPath {
 		removeChildren(tgtRoot, t, targetPath, currentChildren, &wg)
 	}
