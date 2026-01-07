@@ -52,35 +52,6 @@ func syncRemove(filesRemoved []string, src *FileTree, tgt *FileTree) {
 
 }
 
-func syncCreate(src *FileTree, tgt *FileTree, filesCreated []string, maxFileSemaphore chan struct{}, wg *sync.WaitGroup) {
-	nodesToCreate := []*FileNode{}
-	for _, fileCreated := range filesCreated {
-		fileCreatedNode, ok := src.Index[fileCreated]
-		if !ok {
-			slog.Error(fmt.Sprintf("did not find %s in %s.", fileCreated, src.Root.Path))
-			continue
-		}
-
-		relPath, err := filepath.Rel(src.Root.Path, fileCreatedNode.Path)
-		if err != nil {
-			slog.Error(err.Error())
-			continue
-		}
-		destPath := filepath.Join(tgt.Root.Path, relPath)
-		slog.Info(fmt.Sprintf("handling file created: %s -> %s", fileCreated, destPath))
-		relPath, err = filepath.Rel(tgt.Root.Path, destPath)
-		if err != nil {
-			slog.Error(err.Error())
-			continue
-		}
-
-		nodesToCreate = append(nodesToCreate, fileCreatedNode)
-	}
-
-	slog.Info(fmt.Sprint("Nodes to create: ", nodesToCreate))
-	copyChildren(src, tgt, tgt.Root.Path, nodesToCreate, maxFileSemaphore, wg)
-}
-
 func parseFSEvents(fsEvents map[string]string) map[string][]string {
 	eventMap := make(map[string][]string)
 	for filePath, fsAction := range fsEvents {
@@ -123,21 +94,14 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 
 				//Build Tree
 				srcFileTree := BuildTree(cfg.SourceDir)
-				//if Cfg.WatchOnlyInSrc BuildTargetTree else BuildTree
-				targetFileTree := BuildTargetTree(srcFileTree, cfg.TargetDir)
+				targetFileTree := BuildTree(cfg.TargetDir)
 
 				eventMap := parseFSEvents(lastFSEvents)
 				for fsAction, filePaths := range eventMap {
 					switch fsAction {
 					case "REMOVE":
 						// Delete the file where the event is Rename or Remove. Will treat same for now
-						//wg.Go(func() { syncRemove(filePaths, srcFileTree, targetFileTree) })
-						wg.Go(func() {
-							missing := targetFileTree.MissingIn(srcFileTree, maxFileSemaphore, nil)
-							if len(missing) > 0 {
-								targetFileTree.Remove(srcFileTree, missing, nil)
-							}
-						})
+						wg.Go(func() { syncRemove(filePaths, srcFileTree, targetFileTree) })
 
 					case "RENAME":
 						// Rename with no matching Create? Removed from watch dir, delete file/dir

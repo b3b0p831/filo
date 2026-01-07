@@ -49,8 +49,7 @@ func main() {
 
 	srcTree := fs.BuildTree(Cfg.SourceDir)
 	//if Cfg.WatchOnlyInSrc BuildTargetTree else BuildTree
-	targetTree := fs.BuildTargetTree(srcTree, Cfg.TargetDir)
-	slog.Info(fmt.Sprint(targetTree))
+	targetTree := fs.BuildTree(Cfg.TargetDir)
 
 	rightNow := time.Now()
 	var missing map[string][]*fs.FileNode = srcTree.MissingIn(targetTree, maxFileSemaphore, func() {
