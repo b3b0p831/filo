@@ -139,6 +139,7 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 			}
 
 		case <-exit:
+			slog.Debug("Exiting SyncChanges goroutine...")
 			return
 		}
 	}

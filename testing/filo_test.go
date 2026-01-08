@@ -2,6 +2,7 @@ package testing
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +15,7 @@ import (
 	"bebop831.com/filo/internal/fs"
 
 	"github.com/BurntSushi/toml"
+	"github.com/fsnotify/fsnotify"
 )
 
 type BuildTreeTest struct {
@@ -24,10 +26,10 @@ type BuildTreeTest struct {
 }
 
 type FiloSyncTest struct {
-	name       string
-	fsEventMap map[string][]string
-	wantErr    bool
-	check      func(t *testing.T, tree *fs.FileTree)
+	name     string
+	relPaths []string
+	wantErr  bool
+	check    func(t *testing.T, tree *fs.FileTree)
 }
 
 var (
@@ -85,11 +87,9 @@ func init() {
 
 	syncTreeTests = []FiloSyncTest{
 		{
-			name: "large_library",
-			fsEventMap: map[string][]string{
-				"CREATE": []string{"test1.txt", "test1dir"},
-			},
-			check: nil,
+			name:     "large_library",
+			relPaths: []string{"test1.txt", "test1dir"},
+			check:    nil,
 		},
 	}
 }
@@ -212,19 +212,22 @@ func contentsCheck(targetRoot string, treeIndex map[string]*fs.FileNode) int {
 //					 	  Should be able to handle errors and race conditions
 
 func TestFiloSync(t *testing.T) {
+	cfg := config.Load()
+	maxFileSemaphore := make(chan struct{}, cfg.MaxOpenFile)
+	eventChan := make(chan fsnotify.Event)
+	exitChan := make(chan struct{})
+	syncChan := make(chan struct{})
+
+	slog.Info(fmt.Sprintf("Starting FILO TEST watch on '%s'...", cfg.SourceDir))
+
+	go fs.WatchChanges(eventChan, exitChan, syncChan, cfg)
+	go fs.SyncChanges(eventChan, exitChan, syncChan, maxFileSemaphore, cfg)
+
 	for _, tt := range syncTreeTests {
-		for fsAction, filePaths := range tt.fsEventMap {
-			switch fsAction {
-			//Peform these fs actions using OS system calls (os.RemoveALL, etc)
-			case "REMOVE":
-
-			case "RENAME":
-
-			case "WRITE", "CREATE":
-
-			default:
-				fmt.Printf("Skipping file event: %s %v", fsAction, filePaths)
-			}
+		for _, filePath := range tt.relPaths {
+			fmt.Println(filePath)
 		}
 	}
+
+	exitChan <- struct{}{}
 }

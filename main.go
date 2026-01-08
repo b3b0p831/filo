@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/signal"
+	"sync"
 	"time"
 
 	"bebop831.com/filo/internal/config"
@@ -15,6 +19,7 @@ import (
 
 var Cfg *config.Config
 var maxFileSemaphore chan struct{}
+var wg sync.WaitGroup
 
 func init() {
 	Cfg = config.Load()
@@ -67,16 +72,33 @@ func main() {
 		})
 
 	}
+	exitChan := make(chan struct{})
 
 	eventChan := make(chan fsnotify.Event)
-	exitChan := make(chan struct{})
+	defer close(eventChan)
+
 	syncChan := make(chan struct{})
+	defer close(syncChan)
 
 	slog.Info(fmt.Sprintf("Starting FILO watch on '%s'...", Cfg.SourceDir))
 
-	go fs.WatchChanges(eventChan, exitChan, syncChan, Cfg)
-	go fs.SyncChanges(eventChan, exitChan, syncChan, maxFileSemaphore, Cfg)
+	wg.Go(func() {
+		fs.WatchChanges(eventChan, exitChan, syncChan, Cfg)
+	})
+	wg.Go(func() {
+		fs.SyncChanges(eventChan, exitChan, syncChan, maxFileSemaphore, Cfg)
+	})
 
-	<-make(chan struct{})
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
+	slog.Info("Press Ctrl+C to exit...")
+
+	// Block until the signal is received
+	<-ctx.Done()
+	slog.Info("\nCleanly shutting down...")
+	close(exitChan)
+
+	wg.Wait()
+	slog.Info("Filo exiting...")
 }
