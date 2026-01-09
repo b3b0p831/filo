@@ -11,7 +11,7 @@
 FILO monitors a source directory and synchronizes files to a target directory.  
 It ensures the most **recent files** are always present on the target, while automatically evicting older files once a configurable fill threshold (`max_fill`) is reached.
 
-FILO watches the library on the larger drives and keeps the SSD filled with only the most recent media and other user defined criteria. 
+FILO watches the files on the source directory and keeps the target directory filled with only the most recent media and other criteria. 
 
 
 
