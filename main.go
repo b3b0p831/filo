@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/signal"
+	"sync"
 	"time"
 
 	"bebop831.com/filo/internal/config"
@@ -15,6 +19,7 @@ import (
 
 var Cfg *config.Config
 var maxFileSemaphore chan struct{}
+var wg sync.WaitGroup
 
 func init() {
 	Cfg = config.Load()
@@ -47,32 +52,53 @@ func main() {
 
 	util.PrintConfig(Cfg, srcUsage, targetUsage)
 
-	srcTree, targetTree := fs.BuildTree(Cfg.SourceDir), fs.BuildTree(Cfg.TargetDir)
+	srcTree := fs.BuildTree(Cfg.SourceDir)
+	//if Cfg.WatchOnlyInSrc BuildTargetTree else BuildTree
+	targetTree := fs.BuildTree(Cfg.TargetDir)
 
 	rightNow := time.Now()
-	var missing map[string][]*fs.FileNode = srcTree.MissingIn(targetTree, func() {
+	var missing map[string][]*fs.FileNode = srcTree.MissingIn(targetTree, maxFileSemaphore, func() {
 		slog.Debug(fmt.Sprint("srcTree.Missingin(targetTree) Elapsed time: ", time.Since(rightNow)))
-	}, maxFileSemaphore)
+	})
 
 	//Perform Initial Sync
 	if len(missing) != 0 {
 		slog.Info("Performing initial file sync...")
+		slog.Info(fmt.Sprint(missing))
 		rightNow = time.Now()
 		slog.Debug(fmt.Sprintln(missing))
-		targetTree.CopyMissing(missing, maxFileSemaphore, func() {
+		targetTree.CopyFrom(srcTree, missing, maxFileSemaphore, func() {
 			slog.Info(fmt.Sprint("Initial file sync complete, Elapsed time: ", time.Since(rightNow)))
 		})
 
 	}
+	exitChan := make(chan struct{})
 
 	eventChan := make(chan fsnotify.Event)
-	exitChan := make(chan struct{})
+	defer close(eventChan)
+
 	syncChan := make(chan struct{})
+	defer close(syncChan)
 
 	slog.Info(fmt.Sprintf("Starting FILO watch on '%s'...", Cfg.SourceDir))
-	go fs.SyncChanges(eventChan, exitChan, syncChan, maxFileSemaphore, Cfg)
-	go fs.WatchChanges(eventChan, exitChan, syncChan, Cfg)
 
-	<-make(chan struct{})
+	wg.Go(func() {
+		fs.WatchChanges(eventChan, exitChan, syncChan, Cfg)
+	})
+	wg.Go(func() {
+		fs.SyncChanges(eventChan, exitChan, syncChan, maxFileSemaphore, Cfg)
+	})
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	slog.Info("Press Ctrl+C to exit...")
+
+	// Block until the signal is received
+	<-ctx.Done()
+	slog.Info("\nCleanly shutting down...")
+	close(exitChan)
+
+	wg.Wait()
+	slog.Info("Filo exiting...")
 }

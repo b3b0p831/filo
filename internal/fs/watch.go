@@ -45,7 +45,6 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, syncCha
 
 	go OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: cfg.SourceDir}, watcher)
 
-	// TODO: Turns this into go routine, go util.WatchChanges
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -77,15 +76,18 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, syncCha
 
 			eventChan <- event
 
-		case err, ok := <-watcher.Errors:
-			if !ok {
-				exitChan <- struct{}{}
-				return
-			}
+		case err, _ := <-watcher.Errors:
 			log.Println("error:", err)
+			watcher.Close()
+			return
 
 		case <-syncChan:
 			slog.Debug("received sync message")
+
+		case <-exitChan:
+			slog.Debug("Exiting WatchChanges goroutine...")
+			watcher.Close()
+			return
 		}
 	}
 }

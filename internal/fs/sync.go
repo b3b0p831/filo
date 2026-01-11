@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"sync"
 	"time"
 
@@ -15,7 +14,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-func syncRemove(filesToBeRemoved []string, src *FileTree, tgt *FileTree) {
+func syncRemove(filesRemoved []string, src *FileTree, tgt *FileTree) {
 
 	tgtRoot, err := os.OpenRoot(tgt.Root.Path)
 	if err != nil {
@@ -24,45 +23,47 @@ func syncRemove(filesToBeRemoved []string, src *FileTree, tgt *FileTree) {
 	}
 	defer tgtRoot.Close()
 
-	for _, fp := range filesToBeRemoved {
-
-		relBaseFile, err := filepath.Rel(src.Root.Path, fp)
-		if err != nil {
-			slog.Error(err.Error())
+	for _, fileRemoved := range filesRemoved {
+		relBaseFile := src.RelBaseFile(fileRemoved)
+		tgtFilePath := filepath.Join(tgt.Root.Path, relBaseFile)
+		_, ok := tgt.Index[tgtFilePath]
+		if !ok {
+			slog.Error(fmt.Sprintf("removed filepath '%s' missing from tgt.Index, skipping", tgtFilePath))
 			continue
 		}
 
 		if filepath.IsLocal(relBaseFile) {
 
 			if err := tgtRoot.RemoveAll(relBaseFile); err != nil {
-				slog.Warn(err.Error())
+				slog.Error(err.Error())
+				continue
 			}
-
-			// tgtFilePath := filepath.Join(tgt.Root.Path, relBaseFile)
-			// delete(src.Index, fp)
-			// delete(tgt.Index, tgtFilePath)
 
 			if _, err := tgtRoot.Lstat(relBaseFile); errors.Is(err, os.ErrNotExist) {
 				slog.Info(fmt.Sprintf("%s successfully deleted from %s", relBaseFile, tgt.Root.Path))
+			} else {
+				slog.Error(err.Error())
 			}
 
+		} else {
+			slog.Info(fmt.Sprintf("failed to delete %s", filepath.Join(tgt.Root.Path, relBaseFile)))
 		}
-
 	}
+
 }
 
-func syncCreate(filesToBeCreated []string, src *FileTree, tgt *FileTree) {
-	tgtRoot, err := os.OpenRoot(tgt.Root.Path)
-	if err != nil {
-		slog.Error(err.Error())
-		return
+func parseFSEvents(fsEvents map[string]string) map[string][]string {
+	eventMap := make(map[string][]string)
+	for filePath, fsAction := range fsEvents {
+		if _, ok := eventMap[fsAction]; !ok {
+			eventMap[fsAction] = []string{}
+		}
+		currentFilePaths := eventMap[fsAction]
+		currentFilePaths = append(currentFilePaths, filePath)
+		eventMap[fsAction] = currentFilePaths
 	}
-	defer tgtRoot.Close()
 
-	for _, fp := range filesToBeCreated {
-		slog.Info(fp)
-	}
-
+	return eventMap
 }
 
 // Sync maintains 2 directories that should be the same.
@@ -71,15 +72,13 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 
 	var lastEvent time.Time
 	var wg sync.WaitGroup
-	fileEvents := make(map[string][]string) //path -> last operation(i.e CREATE or REMOVE)
+	lastFSEvents := make(map[string]string)
 
 	for {
 		select {
 		case e := <-eventChan:
-			changesSlice := fileEvents[e.Op.String()] // i.e fileEvents["CREATE"]
-			if !slices.Contains(changesSlice, e.Name) {
-				fileEvents[e.Op.String()] = append(changesSlice, e.Name)
-			}
+			fsAction, filePath := e.Op.String(), e.Name //CREATE, REMOVE, WRITE, etc | filePath (i.e /tmp/tempfile1.txt)
+			lastFSEvents[filePath] = fsAction
 
 			lastEvent = time.Now()
 
@@ -93,29 +92,39 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 					syncChan <- struct{}{}
 				}
 
+				//Build Tree
 				srcFileTree := BuildTree(cfg.SourceDir)
-				dstFileTree := BuildTree(cfg.TargetDir)
+				targetFileTree := BuildTree(cfg.TargetDir)
 
-				for op, paths := range fileEvents {
-					switch op {
+				eventMap := parseFSEvents(lastFSEvents)
+				for fsAction, filePaths := range eventMap {
+					switch fsAction {
 					case "REMOVE":
 						// Delete the file where the event is Rename or Remove. Will treat same for now
-						syncRemove(paths, srcFileTree, dstFileTree)
+						wg.Go(func() { syncRemove(filePaths, srcFileTree, targetFileTree) })
 
 					case "RENAME":
 						// Rename with no matching Create? Removed from watch dir, delete file/dir
 						// Rename with matching Create? File was moved from current loc to somewhere else in srcDir
 						// Check if any rename matches a create content. Pop entry from fileEvents?
-						//wg.Go(func() { syncRemove(paths, srcFileTree, dstFileTree) })
+						// wg.Go(func() { syncRemove(paths, srcFileTree, dstFileTree) })
 
-					case "WRITE":
-						// Compare fileState info between src -> target, if different get diff from src, if missing fallthrough to create
-						//wg.Go(func() { syncRemove(paths, srcFileTree, dstFileTree) })
-
-					case "CREATE":
+					case "WRITE", "CREATE":
+						// Check if exists. If exists, compare fileState info between src -> target
+						// wg.Go(func() { syncRemove(paths, srcFileTree, dstFileTree) })
 						// If dir, create dir. If file create file.
 						// Filo should only every write in the target dir and not outside.
-						syncCreate(paths, srcFileTree, dstFileTree)
+						//wg.Go(func() { syncCreate(srcFileTree, targetFileTree, filePaths, maxFileSemaphore, &wg) })
+
+						wg.Go(func() {
+							missing := srcFileTree.MissingIn(targetFileTree, maxFileSemaphore, nil)
+							if len(missing) > 0 {
+								targetFileTree.CopyFrom(srcFileTree, missing, maxFileSemaphore, nil)
+							}
+						})
+
+					default:
+						slog.Debug(fmt.Sprintf("Skipping file event: %s %v", fsAction, filePaths))
 
 					}
 				}
@@ -124,15 +133,13 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 
 				// reset
 				lastEvent = time.Time{}
-				fileEvents = make(map[string][]string)
-				srcFileTree = BuildTree(cfg.SourceDir)
-				dstFileTree = BuildTree(cfg.TargetDir)
-
+				lastFSEvents = make(map[string]string)
 				slog.Info(fmt.Sprintf("Sync completed successfully, Elapsed time: %v", time.Since(syncTime)))
 
 			}
 
 		case <-exit:
+			slog.Debug("Exiting SyncChanges goroutine...")
 			return
 		}
 	}
