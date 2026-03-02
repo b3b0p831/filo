@@ -114,8 +114,6 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 						// wg.Go(func() { syncRemove(paths, srcFileTree, dstFileTree) })
 						// If dir, create dir. If file create file.
 						// Filo should only every write in the target dir and not outside.
-						//wg.Go(func() { syncCreate(srcFileTree, targetFileTree, filePaths, maxFileSemaphore, &wg) })
-
 						wg.Go(func() {
 							missing := srcFileTree.MissingIn(targetFileTree, maxFileSemaphore, nil)
 							if len(missing) > 0 {
