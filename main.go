@@ -51,6 +51,7 @@ func main() {
 
 	}
 	exitChan := make(chan struct{})
+	defer close(exitChan)
 
 	eventChan := make(chan fsnotify.Event)
 	defer close(eventChan)
@@ -69,12 +70,15 @@ func main() {
 	defer stop()
 
 	// Block until the signal is received
+	slog.Info("Press Ctrl+C to exit...")
 	<-ctx.Done()
 
 	//Perform Cleanup
 	slog.Info("Shutting down...")
 	close(exitChan)
 
+	slog.Info("\nCleanly shutting down...")
 	wg.Wait()
+
 	slog.Info("Filo exiting...")
 }
