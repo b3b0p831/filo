@@ -14,7 +14,6 @@ import (
 	"bebop831.com/filo/internal/util"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/shirou/gopsutil/v4/disk"
 )
 
 var Cfg *config.Config
@@ -28,35 +27,14 @@ func init() {
 
 func main() {
 
-	util.PrintBanner()
+	util.PrintIntro(Cfg)
 
-	if len(Cfg.SourceDir) == 0 {
-		slog.Error("Invalid source dir.")
-	}
-
-	if len(Cfg.TargetDir) == 0 {
-		slog.Error("Invalid target dir.")
-	}
-
-	targetUsage, err := disk.Usage(Cfg.TargetDir)
-	if err != nil {
-		slog.Error(err.Error() + " " + Cfg.TargetDir)
-		return
-	}
-
-	srcUsage, err := disk.Usage(Cfg.SourceDir)
-	if err != nil {
-		slog.Error(err.Error() + " " + Cfg.SourceDir)
-		return
-	}
-
-	util.PrintConfig(Cfg, srcUsage, targetUsage)
-
+	slog.Debug("building initial FiloTrees...")
 	srcTree := fs.BuildTree(Cfg.SourceDir)
-	//if Cfg.WatchOnlyInSrc BuildTargetTree else BuildTree
 	targetTree := fs.BuildTree(Cfg.TargetDir)
 
 	rightNow := time.Now()
+	slog.Debug(fmt.Sprintf("srcTree.Missingin(%v) ", targetTree.Root.Path))
 	var missing map[string][]*fs.FileNode = srcTree.MissingIn(targetTree, maxFileSemaphore, func() {
 		slog.Debug(fmt.Sprint("srcTree.Missingin(targetTree) Elapsed time: ", time.Since(rightNow)))
 	})
@@ -64,7 +42,7 @@ func main() {
 	//Perform Initial Sync
 	if len(missing) != 0 {
 		slog.Info("Performing initial file sync...")
-		slog.Info(fmt.Sprint(missing))
+		slog.Debug(fmt.Sprint(missing))
 		rightNow = time.Now()
 		slog.Debug(fmt.Sprintln(missing))
 		targetTree.CopyFrom(srcTree, missing, maxFileSemaphore, func() {
@@ -80,8 +58,6 @@ func main() {
 	syncChan := make(chan struct{})
 	defer close(syncChan)
 
-	slog.Info(fmt.Sprintf("Starting FILO watch on '%s'...", Cfg.SourceDir))
-
 	wg.Go(func() {
 		fs.WatchChanges(eventChan, exitChan, syncChan, Cfg)
 	})
@@ -92,11 +68,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	slog.Info("Press Ctrl+C to exit...")
-
 	// Block until the signal is received
 	<-ctx.Done()
-	slog.Info("\nCleanly shutting down...")
+
+	//Perform Cleanup
+	slog.Info("Shutting down...")
 	close(exitChan)
 
 	wg.Wait()
