@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"log/slog"
@@ -50,21 +51,28 @@ func Load() *Config {
 	v.SetDefault("max_openfile", "100")
 
 	// Config file name and type
-	v.SetConfigName("config") // without extension
+	v.SetConfigName("filo") // without extension
 	v.SetConfigType("toml")
 
-	v.AddConfigPath("/etc/filo/filo.conf") // fallback: current dir
-	v.AddConfigPath(".")                   // fallback: current dir
+	v.AddConfigPath("/etc/filo/") // fallback: current dir
+	cwd, err := os.Getwd()
+	if err != nil {
+		slog.Error(fmt.Sprintf("os.Getwd() failed in config.go: %s\n", err.Error()))
+		os.Exit(2)
+	}
+	v.AddConfigPath(cwd) // fallback: current dir
 
 	// Read config
 	if err := v.ReadInConfig(); err != nil {
-		log.Fatal("failed to read config:", err)
+		slog.Error(fmt.Sprintf("viper.ReadInConfig() failed in config.go: %s\n", err.Error()))
+		os.Exit(2)
 	}
 
 	// Unmarshal into struct
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
-		log.Fatal("failed to read config:", err)
+		slog.Error(fmt.Sprintf("viper.Unmarshal() failed in config.go: %s\n", err.Error()))
+		os.Exit(2)
 	}
 
 	var outWriter io.Writer
@@ -81,7 +89,8 @@ func Load() *Config {
 	}
 
 	logger := slog.New(tint.NewHandler(outWriter, &tint.Options{
-		Level: debugLevels[cfg.LogLevel],
+		Level:      debugLevels[cfg.LogLevel],
+		TimeFormat: time.DateTime,
 	}))
 
 	slog.SetDefault(logger)

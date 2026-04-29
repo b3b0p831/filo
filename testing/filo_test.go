@@ -27,7 +27,7 @@ type BuildTreeTest struct {
 
 type FiloSyncTest struct {
 	name     string
-	relPaths []string
+	fileRoot *fs.FileTree
 	wantErr  bool
 	check    func(t *testing.T, tree *fs.FileTree)
 }
@@ -87,15 +87,20 @@ func init() {
 
 	syncTreeTests = []FiloSyncTest{
 		{
-			name:     "large_library",
-			relPaths: []string{"test1.txt", "test1dir"},
+			name:     "Sync 1",
+			fileRoot: fs.BuildTree(filepath.Join(test_root, "sync1")),
+			check:    nil,
+		},
+		{
+			name:     "Sync 2",
+			fileRoot: fs.BuildTree(filepath.Join(test_root, "sync2")),
 			check:    nil,
 		},
 	}
 }
 
 func TestTOMLParse(t *testing.T) {
-	tomlFN := "config.toml"
+	tomlFN := "filo.toml"
 	var cfgTest config.Config
 	_, err := toml.DecodeFile(tomlFN, &cfgTest)
 	if err != nil {
@@ -224,8 +229,10 @@ func TestFiloSync(t *testing.T) {
 	go fs.SyncChanges(eventChan, exitChan, syncChan, maxFileSemaphore, cfg)
 
 	for _, tt := range syncTreeTests {
-		for _, filePath := range tt.relPaths {
-			fmt.Println(filePath)
+		if tt.fileRoot == nil && !tt.wantErr {
+			t.Error("Got unexpected nil tree")
+		} else {
+			//t.Log(tt.fileRoot)
 		}
 	}
 

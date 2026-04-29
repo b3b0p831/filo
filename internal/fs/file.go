@@ -120,7 +120,7 @@ func buildTree(src *FileTree, rootPath string) *FileTree {
 				})
 			}
 		} else if d.IsDir() && path != ft.Root.Path {
-			slog.Warn(fmt.Sprint("Skipping: ", path))
+			slog.Debug(fmt.Sprint("Skipping: ", path))
 			return filepath.SkipDir
 		}
 
@@ -137,6 +137,7 @@ func BuildTargetTree(src *FileTree, rootPath string) *FileTree {
 }
 
 func BuildTree(rootPath string) *FileTree {
+	slog.Debug(fmt.Sprintf("building FiloTree for \"%s\"\n", rootPath))
 	return buildTree(nil, rootPath)
 }
 

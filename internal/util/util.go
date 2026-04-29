@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"log/slog"
 
 	"bebop831.com/filo/internal/config"
 	"github.com/fatih/color"
@@ -80,4 +81,33 @@ func PrintConfig(cfg *config.Config, srcUsage *disk.UsageStat, targetUsage *disk
 	fmt.Printf("%s %s\n", label(" Sync Delay :"), cfg.SyncDelay)
 	fmt.Printf("%s %s\n", label(" Log Level  :"), value(cfg.LogLevel))
 	fmt.Println(header("============================================="))
+}
+
+func PrintIntro(cfg *config.Config) {
+	PrintBanner()
+
+	if len(cfg.SourceDir) == 0 {
+		slog.Error("Invalid source dir.")
+	}
+
+	if len(cfg.TargetDir) == 0 {
+		slog.Error("Invalid target dir.")
+	}
+
+	targetUsage, err := disk.Usage(cfg.TargetDir)
+	if err != nil {
+		slog.Error(err.Error() + " " + cfg.TargetDir)
+		return
+	}
+
+	srcUsage, err := disk.Usage(cfg.SourceDir)
+	if err != nil {
+		slog.Error(err.Error() + " " + cfg.SourceDir)
+		return
+	}
+
+	PrintConfig(cfg, srcUsage, targetUsage)
+	slog.Info(fmt.Sprintf("Starting FILO watch on '%s'...", cfg.SourceDir))
+	slog.Info("Press Ctrl+C to exit...")
+
 }

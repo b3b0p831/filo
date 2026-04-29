@@ -1,0 +1,7 @@
+source_dir = "/Users/bebop831/Dev/serv"
+target_dir = "/Users/bebop831/Dev/filo_target"
+max_fill   = 0.92
+log_level  = "debug"
+sync_delay = "2s"
+log_file = "filo.log"
+max_openfile = 100
