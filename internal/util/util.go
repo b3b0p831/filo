@@ -108,6 +108,5 @@ func PrintIntro(cfg *config.Config) {
 
 	PrintConfig(cfg, srcUsage, targetUsage)
 	slog.Info(fmt.Sprintf("Starting FILO watch on '%s'...", cfg.SourceDir))
-	slog.Info("Press Ctrl+C to exit...")
 
 }

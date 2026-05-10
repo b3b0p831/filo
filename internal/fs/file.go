@@ -2,6 +2,7 @@ package fs
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -27,11 +28,30 @@ type FileNode struct {
 	Entry    fs.DirEntry
 	Parent   *FileNode
 	Children []*FileNode
+	Hash     []byte
 }
 
 type FileTree struct {
 	Root  *FileNode
 	Index map[string]*FileNode
+}
+
+func (t *FileNode) SetFileHash() {
+
+	currentNodeFD, err := os.Open(t.Path)
+	if err != nil {
+		slog.Error(err.Error())
+	} else {
+		defer currentNodeFD.Close()
+
+		h := sha256.New()
+		if _, err := io.Copy(h, currentNodeFD); err != nil {
+			slog.Error(err.Error())
+			return
+		}
+
+		t.Hash = h.Sum(nil)
+	}
 }
 
 func buildTree(src *FileTree, rootPath string) *FileTree {
@@ -111,8 +131,19 @@ func buildTree(src *FileTree, rootPath string) *FileTree {
 						childNode := &FileNode{Path: possiblePath, Entry: e, Parent: currentNode, Children: make([]*FileNode, 0)}
 						currentNode.Children = append(currentNode.Children, childNode)
 						ft.Index[childNode.Path] = childNode
+
+						// if !childNode.Entry.IsDir() {
+						// 	childNode.SetFileHash()
+						// }
 					}
 				}
+
+				// h := sha256.New()
+				// for _, child := range currentNode.Children {
+				// 	h.Write(child.Hash)
+				// }
+
+				// currentNode.Hash = h.Sum(nil)
 
 				// You can get with this, or you can get with that
 				slices.SortFunc(currentNode.Children, func(this, that *FileNode) int {
@@ -147,6 +178,7 @@ func IsApprovedPath(path string) bool {
 	isHidden, err := IsHiddenFile(cleanedFilePath)
 
 	if err != nil {
+		slog.Error(err.Error())
 		return false
 	}
 
@@ -199,6 +231,8 @@ func compareFileNodes(srcFileNode, tgtFileNode *FileNode) (bool, error) {
 			srcFile.Close()
 			return false, err
 		}
+
+		//Build a DataTree when hashing a file
 
 		srcFileBuf := make([]byte, bufSize)
 		tgtFileBuf := make([]byte, bufSize)
@@ -489,6 +523,11 @@ func (n *FileNode) String() string {
 		parent = n.Parent.Path
 	}
 
+	hash := "<nil>"
+	if n.Hash != nil {
+		hash = fmt.Sprintf("%x", n.Hash)
+	}
+
 	children := "<nil>"
 	if len(n.Children) > 0 {
 		names := make([]string, 0, len(n.Children))
@@ -501,8 +540,9 @@ func (n *FileNode) String() string {
 	}
 
 	return fmt.Sprintf(
-		"FileNode{Entry=%s, Parent=%s, Children=%s}",
+		"FileNode{Entry=%s, Hash=%s, Parent=%s, Children=%s}",
 		entry,
+		hash,
 		parent,
 		children,
 	)
