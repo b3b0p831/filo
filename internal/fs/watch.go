@@ -1,9 +1,9 @@
 package fs
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -32,27 +32,28 @@ func OnCreate(event *fsnotify.Event, watcher *fsnotify.Watcher) {
 	}
 }
 
-func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, syncChan chan struct{}, cfg *config.Config) {
+func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, cfg *config.Config) {
+	defer slog.Debug("Exiting WatchChanges goroutine...")
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		slog.Error(err.Error())
 	}
 
-	watcher.Add(cfg.SourceDir)
+	defer watcher.Close()
+
+	err = watcher.Add(cfg.SourceDir)
 	if err != nil {
 		slog.Error(err.Error())
 	}
 
 	go OnCreate(&fsnotify.Event{Op: fsnotify.Create, Name: cfg.SourceDir}, watcher)
 
+exitFor:
 	for {
 		select {
 		case event, ok := <-watcher.Events:
-			if !ok {
-				return
-			}
-
-			if !IsApprovedPath(event.Name) {
+			if !ok || !IsApprovedPath(event.Name) {
 				continue
 			}
 
@@ -77,17 +78,13 @@ func WatchChanges(eventChan chan fsnotify.Event, exitChan chan struct{}, syncCha
 			eventChan <- event
 
 		case err, _ := <-watcher.Errors:
-			log.Println("error:", err)
-			watcher.Close()
-			return
-
-		case <-syncChan:
-			slog.Debug("received sync message")
+			slog.Error(err.Error())
+			if errors.Is(err, fsnotify.ErrClosed) {
+				break exitFor
+			}
 
 		case <-exitChan:
-			slog.Debug("Exiting WatchChanges goroutine...")
-			watcher.Close()
-			return
+			break exitFor
 		}
 	}
 }

@@ -40,10 +40,13 @@ const (
 	GiB                           // 1 GiB = 1024 MiB
 	TiB                           // 1 TiB = 1024 GiB
 	PiB                           // 1 PiB = 1024 TiB
+	EiB                           // 1 EiB = 1024 PiB
 )
 
 func BytesToString(bytes uint64) string {
 	switch {
+	case bytes >= EiB:
+		return fmt.Sprintf("%.2f EiB", float64(bytes)/float64(EiB))
 	case bytes >= PiB:
 		return fmt.Sprintf("%.2f PiB", float64(bytes)/float64(PiB))
 	case bytes >= TiB:
@@ -85,14 +88,6 @@ func PrintConfig(cfg *config.Config, srcUsage *disk.UsageStat, targetUsage *disk
 
 func PrintIntro(cfg *config.Config) {
 	PrintBanner()
-
-	if len(cfg.SourceDir) == 0 {
-		slog.Error("Invalid source dir.")
-	}
-
-	if len(cfg.TargetDir) == 0 {
-		slog.Error("Invalid target dir.")
-	}
 
 	targetUsage, err := disk.Usage(cfg.TargetDir)
 	if err != nil {

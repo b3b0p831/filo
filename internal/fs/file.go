@@ -54,7 +54,13 @@ func (t *FileNode) SetFileHash() {
 	}
 }
 
-func buildTree(src *FileTree, rootPath string) *FileTree {
+func buildTree(src *FileTree, rootPath string) (*FileTree, error) {
+
+	sanitized_path := filepath.Clean(rootPath)
+	if _, err := os.Lstat(sanitized_path); err != nil {
+		return nil, err
+	}
+
 	ft := &FileTree{Index: make(map[string]*FileNode), Root: &FileNode{Path: rootPath}}
 
 	filepath.WalkDir(ft.Root.Path, func(path string, d fs.DirEntry, err error) error {
@@ -158,16 +164,16 @@ func buildTree(src *FileTree, rootPath string) *FileTree {
 		return nil
 	})
 
-	return ft
+	return ft, nil
 }
 
 // Same as BuildTree except checks if file in rootPath is also in src.
 // Prevents removing files that that don't exist in src but do in tgt.
-func BuildTargetTree(src *FileTree, rootPath string) *FileTree {
+func BuildTargetTree(src *FileTree, rootPath string) (*FileTree, error) {
 	return buildTree(src, rootPath)
 }
 
-func BuildTree(rootPath string) *FileTree {
+func BuildTree(rootPath string) (*FileTree, error) {
 	slog.Debug(fmt.Sprintf("building FiloTree for \"%s\"\n", rootPath))
 	return buildTree(nil, rootPath)
 }

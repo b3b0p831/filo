@@ -52,34 +52,24 @@ func syncRemove(filesRemoved []string, src *FileTree, tgt *FileTree) {
 
 }
 
-func parseFSEvents(fsEvents map[string]string) map[string][]string {
-	eventMap := make(map[string][]string)
-	for filePath, fsAction := range fsEvents {
-		if _, ok := eventMap[fsAction]; !ok {
-			eventMap[fsAction] = []string{}
-		}
-		currentFilePaths := eventMap[fsAction]
-		currentFilePaths = append(currentFilePaths, filePath)
-		eventMap[fsAction] = currentFilePaths
-	}
-
-	return eventMap
-}
-
 // Sync maintains 2 directories that should be the same.
-func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan chan struct{}, maxFileSemaphore chan struct{}, cfg *config.Config) {
+func SyncChanges(eventChan <-chan fsnotify.Event, exit chan struct{}, maxFileSemaphore chan struct{}, cfg *config.Config) {
 	minInterval := cfg.SyncDelay
 
 	var lastEvent time.Time
 	var wg sync.WaitGroup
-	lastFSEvents := make(map[string]string)
+	lastFSEvents := make(map[string][]string)
 
+exitFor:
 	for {
 		select {
 		case e := <-eventChan:
 			fsAction, filePath := e.Op.String(), e.Name //CREATE, REMOVE, WRITE, etc | filePath (i.e /tmp/tempfile1.txt)
-			lastFSEvents[filePath] = fsAction
+			if _, ok := lastFSEvents[fsAction]; !ok {
+				lastFSEvents[fsAction] = make([]string, 0)
+			}
 
+			lastFSEvents[fsAction] = append(lastFSEvents[fsAction], filePath)
 			lastEvent = time.Now()
 
 		case <-time.After(minInterval):
@@ -88,15 +78,22 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 				slog.Info(fmt.Sprintf("Syncing started: %v -> %v...", cfg.SourceDir, cfg.TargetDir))
 				syncTime := time.Now()
 
-				if syncChan != nil {
-					syncChan <- struct{}{}
+				//Build Tree
+				srcFileTree, err := BuildTree(cfg.SourceDir)
+				if err != nil {
+					slog.Error(err.Error())
+					close(exit)
+					break exitFor
 				}
 
-				//Build Tree
-				srcFileTree := BuildTree(cfg.SourceDir)
-				targetFileTree := BuildTree(cfg.TargetDir)
+				targetFileTree, err := BuildTree(cfg.TargetDir)
+				if err != nil {
+					slog.Error(err.Error())
+					close(exit)
+					break exitFor
+				}
 
-				eventMap := parseFSEvents(lastFSEvents)
+				eventMap := lastFSEvents //parseFSEvents(lastFSEvents)
 				for fsAction, filePaths := range eventMap {
 					switch fsAction {
 					case "REMOVE":
@@ -131,14 +128,15 @@ func SyncChanges(eventChan <-chan fsnotify.Event, exit <-chan struct{}, syncChan
 
 				// reset
 				lastEvent = time.Time{}
-				lastFSEvents = make(map[string]string)
+				lastFSEvents = make(map[string][]string)
 				slog.Info(fmt.Sprintf("Sync completed successfully, Elapsed time: %v", time.Since(syncTime)))
 
 			}
 
 		case <-exit:
-			slog.Debug("Exiting SyncChanges goroutine...")
-			return
+			break exitFor
 		}
 	}
+
+	slog.Debug("Exiting SyncChanges goroutine...")
 }

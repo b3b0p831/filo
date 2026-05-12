@@ -30,8 +30,17 @@ func main() {
 	util.PrintIntro(Cfg)
 
 	slog.Debug("building initial FiloTrees...")
-	srcTree := fs.BuildTree(Cfg.SourceDir)
-	targetTree := fs.BuildTree(Cfg.TargetDir)
+	srcTree, err := fs.BuildTree(Cfg.SourceDir)
+	if err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
+
+	targetTree, err := fs.BuildTree(Cfg.TargetDir)
+	if err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
 
 	rightNow := time.Now()
 	slog.Debug(fmt.Sprintf("srcTree.Missingin(%v) ", targetTree.Root.Path))
@@ -50,39 +59,29 @@ func main() {
 
 	}
 
-	for _, v := range srcTree.Index {
-		slog.Info(fmt.Sprintf("%s %x\n", v.Path, v.Hash))
-	}
-
-	for _, v := range targetTree.Index {
-		slog.Info(fmt.Sprintf("%s %x\n", v.Path, v.Hash))
-	}
-
 	exitChan := make(chan struct{})
 
 	eventChan := make(chan fsnotify.Event)
 	defer close(eventChan)
 
-	syncChan := make(chan struct{})
-	defer close(syncChan)
-
 	wg.Go(func() {
-		fs.WatchChanges(eventChan, exitChan, syncChan, Cfg)
+		fs.WatchChanges(eventChan, exitChan, Cfg)
 	})
 	wg.Go(func() {
-		fs.SyncChanges(eventChan, exitChan, syncChan, maxFileSemaphore, Cfg)
+		fs.SyncChanges(eventChan, exitChan, maxFileSemaphore, Cfg)
 	})
 
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt)
 
 	// Block until the signal is received
 	slog.Info("Press Ctrl+C to exit...")
-	<-ctx.Done()
 
-	//Perform Cleanup
-	close(exitChan)
+	select {
+	case <-exitChan:
+	case <-ctx.Done():
+		close(exitChan)
+	}
 
-	//Wait for routines
 	wg.Wait()
 
 	slog.Info("Filo exiting...")

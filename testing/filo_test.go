@@ -26,10 +26,10 @@ type BuildTreeTest struct {
 }
 
 type FiloSyncTest struct {
-	name     string
-	fileRoot *fs.FileTree
-	wantErr  bool
-	check    func(t *testing.T, tree *fs.FileTree)
+	name    string
+	root    string
+	wantErr bool
+	check   func(t *testing.T, tree *fs.FileTree)
 }
 
 var (
@@ -87,14 +87,14 @@ func init() {
 
 	syncTreeTests = []FiloSyncTest{
 		{
-			name:     "Sync 1",
-			fileRoot: fs.BuildTree(filepath.Join(test_root, "sync1")),
-			check:    nil,
+			name:  "Sync 1",
+			root:  filepath.Join(test_root, "sync1"),
+			check: nil,
 		},
 		{
-			name:     "Sync 2",
-			fileRoot: fs.BuildTree(filepath.Join(test_root, "sync2")),
-			check:    nil,
+			name:  "Sync 2",
+			root:  filepath.Join(test_root, "sync2"),
+			check: nil,
 		},
 	}
 }
@@ -123,9 +123,9 @@ func TestTOMLParse(t *testing.T) {
 func TestBuildTree(t *testing.T) {
 	for _, tt := range buildTreeTests {
 		t.Run(tt.name, func(t *testing.T) {
-			tree := fs.BuildTree(tt.path)
-			if tree == nil && !tt.wantErr {
-				t.Fatalf("expected non-nil tree, got nil on %s", tt.path)
+			tree, err := fs.BuildTree(tt.path)
+			if err != nil && !tt.wantErr {
+				t.Fatal(err.Error())
 			}
 
 			if tree != nil {
@@ -229,7 +229,7 @@ func TestFiloSync(t *testing.T) {
 	go fs.SyncChanges(eventChan, exitChan, syncChan, maxFileSemaphore, cfg)
 
 	for _, tt := range syncTreeTests {
-		if tt.fileRoot == nil && !tt.wantErr {
+		if tt.root == "" && !tt.wantErr {
 			t.Error("Got unexpected nil tree")
 		} else {
 			//t.Log(tt.fileRoot)
