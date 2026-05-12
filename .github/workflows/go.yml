@@ -13,7 +13,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [windows-self-hosted, linux-self-hosted]
+        os: [windows-latest, linux-latest]
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
